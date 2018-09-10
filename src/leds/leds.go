@@ -55,6 +55,14 @@ func (r LED) Brightness(i int) LED {
 
 // Blink creates a blinking trigger action
 func (r LED) Blink(i int, onTime int, offTime int) LED {
+	/*
+		!/bin/bash
+		echo none > ${led}/trigger
+		echo ${brightness} > ${led}/brightness
+		echo timer > ${led}/trigger
+		echo ${delay_on} > ${led}/delay_on
+		echo ${delay_off} > ${led}/delay_off
+	*/
 	return r
 }
 
