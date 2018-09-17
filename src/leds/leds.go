@@ -30,7 +30,7 @@ func (r LED) read(where string) []byte {
 
 func (r LED) write(where, what string) LED {
 	filename := r.filename() + "/" + where
-	log.Printf("writing '%s' into '%s'", what, filename)
+	// log.Printf("writing '%s' into '%s'", what, filename)
 	ioutil.WriteFile(filename, []byte(what), 0666)
 	return r
 }
@@ -55,14 +55,11 @@ func (r LED) Brightness(i int) LED {
 
 // Blink creates a blinking trigger action
 func (r LED) Blink(i int, onTime int, offTime int) LED {
-	/*
-		!/bin/bash
-		echo none > ${led}/trigger
-		echo ${brightness} > ${led}/brightness
-		echo timer > ${led}/trigger
-		echo ${delay_on} > ${led}/delay_on
-		echo ${delay_off} > ${led}/delay_off
-	*/
+	r.write("trigger", "none")
+	r.Brightness(i)
+	r.write("trigger", "timer")
+	r.write("delay_on", string(onTime))
+	r.write("delay_off", string(offTime))
 	return r
 }
 
