@@ -20,7 +20,7 @@ var width, height int
 var myLeds leds.LEDS
 
 var (
-	delay = flag.Float64("delay", 5000, "delay in milliseconds between screens")
+	delay = flag.Float64("delay", 7500, "delay in milliseconds between screens")
 	reset = flag.Bool("reset", false, "reset/clear the screen")
 	demo  = flag.Bool("demo", false, "use fake data for display only")
 )
