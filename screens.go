@@ -1,12 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/draw"
+	"log"
 	"os"
+	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/jnovack/cloudkey/images"
 	"github.com/jnovack/cloudkey/src/network"
+	"github.com/jnovack/speedtest"
 )
 
 func buildNetwork(i int) {
@@ -33,14 +38,14 @@ func buildNetwork(i int) {
 }
 
 func buildSpeedTest(i int) {
-	download := "calculating..."
-	upload := "calculating..."
-	timesince := "in progress"
-	if *demo {
-		download = "86.1 Mb/s"
-		upload = "43.9 Mb/s"
-		timesince = "25 minutes ago"
-	}
+
+	dmsg := "calculating..."
+	umsg := "calculating..."
+	tmsg := "in progress"
+
+	download := make(chan int)
+	upload := make(chan int)
+	lastcheck := time.Now()
 
 	screen := screens[i]
 
@@ -49,7 +54,63 @@ func buildSpeedTest(i int) {
 	draw.Draw(screen, image.Rect(2, 22, 2+16, 22+16), images.Load("upload"), image.ZP, draw.Src)
 	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("clock"), image.ZP, draw.Src)
 
-	write(screen, download, 22, 1, 12, "lato-regular")
-	write(screen, upload, 22, 21, 12, "lato-regular")
-	write(screen, timesince, 22, 41, 12, "lato-regular")
+	if *demo {
+		dmsg = "86.1 Mb/s"
+		umsg = "43.9 Mb/s"
+		tmsg = "25 minutes ago"
+		write(screen, dmsg, 22, 1, 12, "lato-regular")
+		write(screen, umsg, 22, 21, 12, "lato-regular")
+		write(screen, tmsg, 22, 41, 12, "lato-regular")
+	} else {
+
+		client := speedtest.NewClient(&speedtest.Opts{})
+		server := client.SelectServer(&speedtest.Opts{})
+
+		go func() {
+			for {
+				tmsg = fmt.Sprintf("%s", humanize.Time(lastcheck))
+				draw.Draw(screen, image.Rect(20, 0, 160, 60), image.Black, image.ZP, draw.Src)
+				write(screen, dmsg, 22, 1, 12, "lato-regular")
+				write(screen, umsg, 22, 21, 12, "lato-regular")
+				write(screen, tmsg, 22, 41, 12, "lato-regular")
+				time.Sleep(10 * time.Second)
+			}
+		}()
+
+		for { // Loop Every Hour
+			myLeds.LED("blue").Blink(128, 500, 500)
+			ddone := false
+			udone := false
+			go func() { download <- server.DownloadSpeed() }()
+
+			for {
+				if ddone != true {
+					select {
+					case dlspeed := <-download:
+						dmsg = fmt.Sprintf("%.2f Mb", float64(dlspeed)/(1<<17))
+						go func() { upload <- server.UploadSpeed() }()
+						ddone = true
+					}
+				}
+
+				if udone != true {
+					select {
+					case ulspeed := <-upload:
+						umsg = fmt.Sprintf("%.2f Mb", float64(ulspeed)/(1<<17))
+						udone = true
+					}
+				}
+
+				if ddone && udone {
+					tmsg = fmt.Sprintf("%s", humanize.Time(time.Now()))
+					break
+				}
+
+			}
+
+			myLeds.LED("blue").On()
+			log.Println("Download: %s / Upload: %s", dmsg, umsg)
+			time.Sleep(59 * time.Minute)
+		}
+	}
 }
