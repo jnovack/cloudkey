@@ -102,14 +102,14 @@ func buildSpeedTest(i int) {
 				}
 
 				if ddone && udone {
-					tmsg = fmt.Sprintf("%s", humanize.Time(time.Now()))
+					lastcheck = time.Now()
 					break
 				}
 
 			}
 
 			myLeds.LED("blue").On()
-			log.Println("Download: %s / Upload: %s", dmsg, umsg)
+			log.Printf("Download: %s / Upload: %s", dmsg, umsg)
 			time.Sleep(59 * time.Minute)
 		}
 	}
