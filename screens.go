@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
-	"log"
 	"os"
 	"time"
 
@@ -38,7 +37,6 @@ func buildNetwork(i int) {
 }
 
 func buildSpeedTest(i int) {
-
 	dmsg := "calculating..."
 	umsg := "calculating..."
 	tmsg := "in progress"
@@ -66,6 +64,13 @@ func buildSpeedTest(i int) {
 		client := speedtest.NewClient(&speedtest.Opts{})
 		server := client.SelectServer(&speedtest.Opts{})
 
+		j(fmt.Sprintf("Hosted by %s (%s) [%.2f km]: %d ms\n",
+			server.Sponsor,
+			server.Name,
+			server.Distance,
+			server.Latency/time.Millisecond))
+
+		// Loop every 10 Seconds
 		go func() {
 			for {
 				tmsg = fmt.Sprintf("%s", humanize.Time(lastcheck))
@@ -77,40 +82,38 @@ func buildSpeedTest(i int) {
 			}
 		}()
 
-		for { // Loop Every Hour
-			myLeds.LED("blue").Blink(128, 500, 500)
-			ddone := false
-			udone := false
-			go func() { download <- server.DownloadSpeed() }()
-
+		// Loop Every Hour
+		go func() {
 			for {
-				if ddone != true {
+				myLeds.LED("blue").Blink(128, 500, 500)
+
+				go func() { download <- server.DownloadSpeed() }()
+
+			Download:
+				for {
 					select {
 					case dlspeed := <-download:
 						dmsg = fmt.Sprintf("%.2f Mb", float64(dlspeed)/(1<<17))
-						go func() { upload <- server.UploadSpeed() }()
-						ddone = true
+						break Download
 					}
 				}
 
-				if udone != true {
+				go func() { upload <- server.UploadSpeed() }()
+
+			Upload:
+				for {
 					select {
 					case ulspeed := <-upload:
 						umsg = fmt.Sprintf("%.2f Mb", float64(ulspeed)/(1<<17))
-						udone = true
+						break Upload
 					}
 				}
 
-				if ddone && udone {
-					lastcheck = time.Now()
-					break
-				}
-
+				lastcheck = time.Now()
+				j(fmt.Sprintf("Download: %s / Upload: %s", dmsg, umsg))
+				myLeds.LED("blue").On()
+				time.Sleep(59 * time.Minute)
 			}
-
-			myLeds.LED("blue").On()
-			log.Printf("Download: %s / Upload: %s", dmsg, umsg)
-			time.Sleep(59 * time.Minute)
-		}
+		}()
 	}
 }
