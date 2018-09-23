@@ -3,16 +3,17 @@ package main
 import (
 	"flag"
 	"fmt"
-	"framebuffer"
 	"image"
 	"image/draw"
 	"log"
 	"os"
 	"os/signal"
 
+	"github.com/jnovack/cloudkey/src/framebuffer"
+	"github.com/jnovack/cloudkey/src/leds"
+
 	journal "github.com/coreos/go-systemd/journal"
 	_ "github.com/jnovack/cloudkey/fonts"
-	"github.com/jnovack/cloudkey/src/leds"
 )
 
 var fb draw.Image
