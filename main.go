@@ -30,9 +30,8 @@ func main() {
 	log.Printf("Resolution: %dx%d pixels\r\n", width, height)
 
 	// Build the screens in the background
-	// Slow screens should run first, display last :(
-	go buildSpeedTest(1)
 	go buildNetwork(0)
+	go buildSpeedTest(1)
 
 	// Fire up the loader while the screens build
 	load()
