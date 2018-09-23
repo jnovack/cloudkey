@@ -1,4 +1,4 @@
-package fbtest
+package main
 
 // Copyright 2010 The Freetype-Go Authors. All rights reserved.
 // Use of this source code is governed by your choice of either the
@@ -27,7 +27,7 @@ import (
 
 var (
 	dpi      = flag.Float64("dpi", 72, "screen resolution in Dots Per Inch")
-	fontfile = flag.String("fontfile", "Lato2OFL/Lato-Regular.ttf", "filename of the ttf font")
+	fontfile = flag.String("fontfile", "/usr/share/fonts/truetype/Lato2OFL/Lato-Regular.ttf", "filename of the ttf font")
 	hinting  = flag.String("hinting", "none", "none | full")
 	size     = flag.Float64("size", 12, "font size in points")
 	spacing  = flag.Float64("spacing", 1, "line spacing (e.g. 2 means double spaced)")
@@ -35,23 +35,24 @@ var (
 	clear    = flag.Bool("clear", false, "clear the screen")
 )
 
-var colors = []color.RGBA{
-	color.RGBA{0x00, 0x00, 0x00, 0xff},
-	color.RGBA{0x11, 0x11, 0x11, 0xff},
-	color.RGBA{0x22, 0x22, 0x22, 0xff},
-	color.RGBA{0x33, 0x33, 0x33, 0xff},
-	color.RGBA{0x44, 0x44, 0x44, 0xff},
-	color.RGBA{0x55, 0x55, 0x55, 0xff},
-	color.RGBA{0x66, 0x66, 0x66, 0xff},
-	color.RGBA{0x77, 0x77, 0x77, 0xff},
-	color.RGBA{0x88, 0x88, 0x88, 0xff},
-	color.RGBA{0x99, 0x99, 0x99, 0xff},
-	color.RGBA{0xaa, 0xaa, 0xaa, 0xff},
-	color.RGBA{0xbb, 0xbb, 0xbb, 0xff},
-	color.RGBA{0xcc, 0xcc, 0xcc, 0xff},
-	color.RGBA{0xdd, 0xdd, 0xdd, 0xff},
-	color.RGBA{0xee, 0xee, 0xee, 0xff},
-	color.RGBA{0xff, 0xff, 0xff, 0xff},
+var colors = []color.Gray{
+	color.Gray{0},
+	color.Gray{15},
+	color.Gray{31},
+	color.Gray{47},
+	color.Gray{63},
+	color.Gray{79},
+	color.Gray{95},
+	color.Gray{111},
+	color.Gray{127},
+	color.Gray{143},
+	color.Gray{159},
+	color.Gray{175},
+	color.Gray{191},
+	color.Gray{207},
+	color.Gray{223},
+	color.Gray{239},
+	color.Gray{255},
 }
 
 var text = []string{
@@ -109,7 +110,7 @@ func drawEveryPixel() {
 	// time.Sleep(1000 * time.Millisecond)
 }
 
-func fbtest() {
+func main() {
 	flag.Parse()
 
 	fb, err := framebuffer.Open("/dev/fb0")
@@ -125,9 +126,9 @@ func fbtest() {
 		for x := range colors {
 			fmt.Printf("%d\r", x)
 			draw.Draw(fb, fb.Bounds(), image.NewUniform(colors[x]), image.ZP, draw.Src)
-			time.Sleep(32 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond)
 		}
-		draw.Draw(fb, fb.Bounds(), image.Black, image.ZP, draw.Src)
+		draw.Draw(fb, fb.Bounds(), image.NewUniform(colors[0]), image.ZP, draw.Src)
 		os.Exit(0)
 	}
 
