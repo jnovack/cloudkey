@@ -16,49 +16,49 @@ import (
 )
 
 // Colors from Black to White
-var colors = []color.RGBA{
-	color.RGBA{0x00, 0x00, 0x00, 0xff},
-	color.RGBA{0x11, 0x11, 0x11, 0xff},
-	color.RGBA{0x22, 0x22, 0x22, 0xff},
-	color.RGBA{0x33, 0x33, 0x33, 0xff},
-	color.RGBA{0x44, 0x44, 0x44, 0xff},
-	color.RGBA{0x55, 0x55, 0x55, 0xff},
-	color.RGBA{0x66, 0x66, 0x66, 0xff},
-	color.RGBA{0x77, 0x77, 0x77, 0xff},
-	color.RGBA{0x88, 0x88, 0x88, 0xff},
-	color.RGBA{0x99, 0x99, 0x99, 0xff},
-	color.RGBA{0xaa, 0xaa, 0xaa, 0xff},
-	color.RGBA{0xbb, 0xbb, 0xbb, 0xff},
-	color.RGBA{0xcc, 0xcc, 0xcc, 0xff},
-	color.RGBA{0xdd, 0xdd, 0xdd, 0xff},
-	color.RGBA{0xee, 0xee, 0xee, 0xff},
-	color.RGBA{0xff, 0xff, 0xff, 0xff},
+var colors = []color.Gray{
+	color.Gray{0x00},
+	color.Gray{0x11},
+	color.Gray{0x22},
+	color.Gray{0x33},
+	color.Gray{0x44},
+	color.Gray{0x55},
+	color.Gray{0x66},
+	color.Gray{0x77},
+	color.Gray{0x88},
+	color.Gray{0x99},
+	color.Gray{0xaa},
+	color.Gray{0xbb},
+	color.Gray{0xcc},
+	color.Gray{0xdd},
+	color.Gray{0xee},
+	color.Gray{0xff},
 }
 
 // Increase Fades Out, Decrease Faces In
 // No need to fade EVERY step
-var fades = []color.RGBA{
-	color.RGBA{0xff, 0xff, 0xff, 0xff},
-	// color.RGBA{0xff, 0xff, 0xff, 0xee},
-	// color.RGBA{0xff, 0xff, 0xff, 0xdd},
-	color.RGBA{0xff, 0xff, 0xff, 0xcc},
-	// color.RGBA{0xff, 0xff, 0xff, 0xbb},
-	// color.RGBA{0xff, 0xff, 0xff, 0xaa},
-	// color.RGBA{0xff, 0xff, 0xff, 0x99},
-	color.RGBA{0xff, 0xff, 0xff, 0x88},
-	// color.RGBA{0xff, 0xff, 0xff, 0x77},
-	// color.RGBA{0xff, 0xff, 0xff, 0x66},
-	// color.RGBA{0xff, 0xff, 0xff, 0x55},
-	color.RGBA{0xff, 0xff, 0xff, 0x44},
-	// color.RGBA{0xff, 0xff, 0xff, 0x33},
-	// color.RGBA{0xff, 0xff, 0xff, 0x22},
-	// color.RGBA{0xff, 0xff, 0xff, 0x11},
-	color.RGBA{0xff, 0xff, 0xff, 0x00},
+var fades = []color.Alpha{
+	color.Alpha{0xff},
+	// color.Alpha{0xee},
+	// color.Alpha{0xdd},
+	color.Alpha{0xcc},
+	// color.Alpha{0xbb},
+	// color.Alpha{0xaa},
+	color.Alpha{0x99},
+	// color.Alpha{0x88},
+	// color.Alpha{0x77},
+	color.Alpha{0x66},
+	// color.Alpha{0x55},
+	// color.Alpha{0x44},
+	color.Alpha{0x33},
+	// color.Alpha{0x22},
+	// color.Alpha{0x11},
+	color.Alpha{0x00},
 }
 
 // Fade the current screen, in or out (default out)
 func fade(inverse bool) {
-	capture := image.NewRGBA(fb.Bounds())
+	capture := image.NewGray(fb.Bounds())
 	draw.Draw(capture, capture.Bounds(), fb, image.ZP, draw.Src)
 
 	for x := range colors {
@@ -69,8 +69,8 @@ func fade(inverse bool) {
 
 		fmt.Printf("%d\r", y)
 
-		bg := image.NewRGBA(fb.Bounds())
-		draw.Draw(bg, bg.Bounds(), image.Black, image.ZP, draw.Src)
+		bg := image.NewGray(fb.Bounds())
+		draw.Draw(bg, bg.Bounds(), image.NewUniform(color.Gray{0}), image.ZP, draw.Src)
 		draw.DrawMask(bg, bg.Bounds(), capture, image.ZP, image.NewUniform(fades[y]), image.ZP, draw.Over)
 
 		// Put it on the RITZ!
@@ -102,20 +102,21 @@ func display(i int) {
 func startFadeCarousel() {
 	for {
 		for s := range screens {
-			capture := image.NewRGBA(fb.Bounds())
+			capture := image.NewGray(fb.Bounds())
 			draw.Draw(capture, capture.Bounds(), fb, image.ZP, draw.Src)
 			// Fade Old Screen Out
 			for x := range fades {
-				bg := image.NewRGBA(fb.Bounds())
-				draw.Draw(bg, bg.Bounds(), image.Black, image.ZP, draw.Src)
+				bg := image.NewGray(fb.Bounds())
+				draw.Draw(bg, bg.Bounds(), image.NewUniform(color.Gray{0}), image.ZP, draw.Src)
 				draw.DrawMask(bg, bg.Bounds(), capture, image.ZP, image.NewUniform(fades[x]), image.ZP, draw.Over)
 				draw.Draw(fb, fb.Bounds(), bg, image.ZP, draw.Over)
 				time.Sleep(8 * time.Millisecond)
 			}
+
 			// Fade New Screen In
 			for x := len(fades) - 1; x >= 0; x-- {
-				bg := image.NewRGBA(fb.Bounds())
-				draw.Draw(bg, bg.Bounds(), image.Black, image.ZP, draw.Src)
+				bg := image.NewGray(fb.Bounds())
+				draw.Draw(bg, bg.Bounds(), image.NewUniform(color.Gray{0}), image.ZP, draw.Src)
 				draw.DrawMask(bg, bg.Bounds(), screens[s], image.ZP, image.NewUniform(fades[x]), image.ZP, draw.Over)
 				draw.Draw(fb, fb.Bounds(), bg, image.ZP, draw.Over)
 				time.Sleep(8 * time.Millisecond)
@@ -127,7 +128,7 @@ func startFadeCarousel() {
 
 // Very slow and CPU intensive on arm
 func startXCarousel() {
-	capture := image.NewRGBA(fb.Bounds())
+	capture := image.NewGray(fb.Bounds())
 	for i := 0; i < 2; i++ {
 		for s := range screens {
 			for x := fb.Bounds().Max.X; x > -1; x-- {
@@ -147,7 +148,7 @@ func startXCarousel() {
 
 // slow and cpu intensive in bursts on arm
 func startYCarousel() {
-	capture := image.NewRGBA(fb.Bounds())
+	capture := image.NewGray(fb.Bounds())
 	for i := 0; i < 2; i++ {
 		for s := range screens {
 			for y := fb.Bounds().Max.Y; y > -1; y-- {
@@ -167,7 +168,7 @@ func startYCarousel() {
 
 // Clear clears the screen
 func clear() {
-	draw.Draw(fb, fb.Bounds(), image.Black, image.ZP, draw.Src)
+	draw.Draw(fb, fb.Bounds(), image.NewUniform(color.Gray{0}), image.ZP, draw.Src)
 }
 
 // Loader gives times for everything time to populate (loaders in 2018?)
