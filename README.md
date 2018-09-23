@@ -4,7 +4,8 @@
 Generation 2 device.
 
 ![screenshot](https://raw.githubusercontent.com/jnovack/cloudkey/master/doc/screenshot.gif)
-*Note: Delay is manipulated to show features.*
+
+*Note: Delay is manipulated to show fading between screens.*
 
 ### Why?
 
@@ -27,6 +28,6 @@ Sure, you can buy a $35 Raspberry Pi, add a case, with a touchscreen, with
 a power-supply, and blah blah, but I'll pay for quality and craftmanship so
 it does not look like another Frankenstein project.
 
-I can ship it to my grand-parents, tell them to plug one cable into the doo-
-hickey and tell them to call their ISP when it has a sad face on it (feature
-not developed yet).
+I can ship it to my grand-parents, tell them to plug one cable into the
+doo-hickey and tell them to call their ISP when it has a sad face on it
+(feature not developed yet).
