@@ -1,4 +1,4 @@
-package main
+package screens
 
 import (
 	"fmt"
@@ -11,9 +11,14 @@ import (
 	"time"
 
 	"github.com/golang/freetype"
+	"github.com/gonutz/framebuffer"
 	"github.com/jnovack/cloudkey/fonts"
 	"github.com/jnovack/cloudkey/images"
 )
+
+var fb draw.Image
+var screens [2]draw.Image
+var width, height int
 
 // Colors from Black to White
 var colors = []color.Gray{
@@ -173,6 +178,22 @@ func clear() {
 
 // Loader gives times for everything time to populate (loaders in 2018?)
 func load() {
+	// Framebuffer has global scope
+	var err error
+	fb, err = framebuffer.Open("/dev/fb0")
+	if err != nil {
+		panic(err)
+	}
+
+	width = fb.Bounds().Max.X
+	height = fb.Bounds().Max.Y
+
+	// Set up additional screens
+	for x := range screens {
+		screens[x] = image.NewRGBA(fb.Bounds())
+	}
+
+	j(fmt.Sprintf("Resolution: %dx%d pixels", width, height))
 	clear()
 
 	draw.Draw(fb, image.Rect(64, 8, 64+32, 8+32), images.Load("logo"), image.ZP, draw.Src)
