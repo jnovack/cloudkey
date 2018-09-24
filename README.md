@@ -5,7 +5,16 @@ Generation 2 device.
 
 ![screenshot](https://raw.githubusercontent.com/jnovack/cloudkey/master/doc/screenshot.gif)
 
-*Note: Delay is manipulated to show fading between screens.*
+*Note: Delay is slowed down to show fading between screens.*
+
+## Installation
+
+1. Have a working Go environment.
+2. `GOOS=linux GOARCH=arm go build cloudkey.go`
+3. SCP the file over to your Cloud Key.
+
+At this point, you can choose to backup and overwrite the `/usr/bin/ck-ui`
+file or create a new systemd service, depending on your linux experience.
 
 ### Why?
 
