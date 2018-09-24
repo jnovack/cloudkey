@@ -3,22 +3,17 @@ package main
 import (
 	"flag"
 	"fmt"
-	"image"
-	"image/draw"
 	"log"
 	"os"
 	"os/signal"
 
-	"github.com/jnovack/cloudkey/src/framebuffer"
 	"github.com/jnovack/cloudkey/src/leds"
 
 	journal "github.com/coreos/go-systemd/journal"
 	_ "github.com/jnovack/cloudkey/fonts"
+	_ "github.com/jnovack/cloudkey/screens"
 )
 
-var fb draw.Image
-var screens [2]draw.Image
-var width, height int
 var myLeds leds.LEDS
 
 var tags = map[string]string{
@@ -40,7 +35,6 @@ func j(message string) {
 
 func main() {
 	clear()
-	j(fmt.Sprintf("Resolution: %dx%d pixels", width, height))
 
 	// Build the screens in the background
 	go buildNetwork(0)
@@ -59,21 +53,6 @@ func main() {
 
 func init() {
 	flag.Parse()
-
-	// Framebuffer has global scope
-	var err error
-	fb, err = framebuffer.Open("/dev/fb0")
-	if err != nil {
-		panic(err)
-	}
-
-	width = fb.Bounds().Max.X
-	height = fb.Bounds().Max.Y
-
-	// Set up additional screens
-	for x := range screens {
-		screens[x] = image.NewRGBA(fb.Bounds())
-	}
 
 	// Setup Service
 	// https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/
