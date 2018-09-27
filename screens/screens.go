@@ -14,26 +14,32 @@ import (
 )
 
 func buildNetwork(i int) {
+	screen := screens[i]
 	hostname := "cloudkey-gen2.local"
 	lan := "192.168.10.111"
 	wan := "203.0.113.32"
-	if !*demo {
-		hostname, _ = os.Hostname()
-		lan, _ = network.LANIP()
-		wan, _ = network.WANIP()
-	}
-
-	screen := screens[i]
 
 	draw.Draw(screen, screen.Bounds(), image.Black, image.ZP, draw.Src)
 	draw.Draw(screen, image.Rect(2, 2, 2+16, 2+16), images.Load("host"), image.ZP, draw.Src)
 	draw.Draw(screen, image.Rect(2, 22, 2+16, 22+16), images.Load("network"), image.ZP, draw.Src)
 	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("internet"), image.ZP, draw.Src)
 
-	write(screen, hostname, 22, 1, 12, "lato-regular")
-	write(screen, lan, 22, 21, 12, "lato-regular")
-	write(screen, wan, 22, 41, 12, "lato-regular")
+	// Loop Every Hour
+	go func() {
+		for {
+			if !*demo {
+				hostname, _ = os.Hostname()
+				lan, _ = network.LANIP()
+				wan, _ = network.WANIP()
+			}
 
+
+			write(screen, hostname, 22, 1, 12, "lato-regular")
+			write(screen, lan, 22, 21, 12, "lato-regular")
+			write(screen, wan, 22, 41, 12, "lato-regular")
+			time.Sleep(59 * time.Minute)
+		}
+	}
 }
 
 func buildSpeedTest(i int) {
@@ -62,13 +68,6 @@ func buildSpeedTest(i int) {
 	} else {
 
 		client := speedtest.NewClient(&speedtest.Opts{})
-		server := client.SelectServer(&speedtest.Opts{})
-
-		j(fmt.Sprintf("Hosted by %s (%s) [%.2f km]: %d ms\n",
-			server.Sponsor,
-			server.Name,
-			server.Distance,
-			server.Latency/time.Millisecond))
 
 		// Loop every 10 Seconds
 		go func() {
@@ -86,6 +85,14 @@ func buildSpeedTest(i int) {
 		go func() {
 			for {
 				myLeds.LED("blue").Blink(128, 500, 500)
+
+				server := client.SelectServer(&speedtest.Opts{})
+
+				j(fmt.Sprintf("Hosted by %s (%s) [%.2f km]: %d ms\n",
+					server.Sponsor,
+					server.Name,
+					server.Distance,
+					server.Latency/time.Millisecond))
 
 				go func() { download <- server.DownloadSpeed() }()
 
