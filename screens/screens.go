@@ -33,13 +33,12 @@ func buildNetwork(i int) {
 				wan, _ = network.WANIP()
 			}
 
-
 			write(screen, hostname, 22, 1, 12, "lato-regular")
 			write(screen, lan, 22, 21, 12, "lato-regular")
 			write(screen, wan, 22, 41, 12, "lato-regular")
 			time.Sleep(59 * time.Minute)
 		}
-	}
+	}()
 }
 
 func buildSpeedTest(i int) {
