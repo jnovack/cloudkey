@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"runtime"
@@ -40,7 +39,6 @@ var (
 	// GoVersion supplied by the runtime
 	GoVersion = runtime.Version()
 )
-s
 func buildInfo() string {
 	return fmt.Sprintf("zeromon version %s git revision %s go version %s", Version, Revision, GoVersion)
 }
