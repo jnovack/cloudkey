@@ -11,9 +11,10 @@ import (
 	"time"
 
 	"github.com/golang/freetype"
-	"github.com/gonutz/framebuffer"
+	// "github.com/gonutz/framebuffer"
 	"github.com/jnovack/cloudkey/fonts"
 	"github.com/jnovack/cloudkey/images"
+	"github.com/jnovack/cloudkey/src/framebuffer"
 )
 
 var fb draw.Image
