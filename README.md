@@ -16,7 +16,19 @@ Generation 2 device.
 At this point, you can choose to backup and overwrite the `/usr/bin/ck-ui`
 file or create a new systemd service, depending on your linux experience.
 
-### Why?
+### Using the `systemd` Service
+
+End the old service first.
+
+1. `systemctl disable ck-ui`
+
+Then use the custom one.
+
+1. SCP `cloudkey.service` to the `/lib/systemd/system/` directory.
+2. `systemctl enable cloudkey`
+3. `systemctl start cloudkey`
+
+## Why?
 
 I am an edge case.  I do not use my Cloud Key device for Unifi.  I think it is
 a great sexy little hardware device, but to manage a network off of what is
@@ -28,15 +40,15 @@ reparing has lead me to have to recover 4 times in 2 years even with the
 secondary USB power from the UPS. That is NOT remotely production stable.
 Run Unifi on a server, not a "raspberry pi".
 
-With that said, I am sure you are asking yourself "Why do you have it all?"
+With that said, I am sure you are asking yourself *"Why do you have it all?"*
 The Ubiquity Cloud Key Gen2 is a POE, ARMv7, Single-Board-Computer with
 on-board battery backup and a 160x60 framebuffer display built-in.  It is
 sexy, for under $200. It looks like an iDevice.
 
 Sure, you can buy a $35 Raspberry Pi, add a case, with a touchscreen, with
 a power-supply, and blah blah, but I'll pay for quality and craftmanship so
-it does not look like another Frankenstein project.
+it does not look like another Frankenstein project around my house.
 
-I can ship it to my grand-parents, tell them to plug one cable into the
+I can ship it to my parents, tell them to plug one cable into the new-fangled
 doo-hickey and tell them to call their ISP when it has a sad face on it
 (feature not developed yet).
