@@ -21,12 +21,16 @@ var tags = map[string]string{
 	"SYSLOG_IDENTIFIER": "cloudkey",
 }
 
-var (
-	delay = flag.Float64("delay", 7500, "delay in milliseconds between screens")
-	reset = flag.Bool("reset", false, "reset/clear the screen")
-	demo  = flag.Bool("demo", false, "use fake data for display only")
-	pidf  = flag.String("pidfile", "/var/run/cloudkey.pid", "pidfile")
-)
+// CmdLineOpts structure for the command line options
+type CmdLineOpts struct {
+	delay   float64
+	reset   bool
+	demo    bool
+	version bool
+	pidfile string
+}
+
+var opts CmdLineOpts
 
 var (
 	// Version supplied by the linker
@@ -63,9 +67,19 @@ func main() {
 }
 
 func init() {
-	flag.Parse()
+	flag.Float64Var(&opts.delay, "delay", 7500, "delay in milliseconds between screens")
+	flag.BoolVar(&opts.reset, "reset", false, "reset/clear the screen")
+	flag.BoolVar(&opts.demo, "demo", false, "use fake data for display only")
+	flag.StringVar(&opts.pidfile, "pidfile", "/var/run/zeromon.pid", "pidfile")
+	flag.BoolVar(&opts.version, "version", false, "print version and exit")
+	flagutil.SetFlagsFromEnv(flag.CommandLine, "CLOUDKEY")
 
-	pid, _ := pidfile.Create(pidf)
+	if opts.version {
+		// already printed version
+		os.Exit(0)
+	}
+
+	pid, _ := pidfile.Create(opts.pidfile)
 
 	// Setup Service
 	// https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/
