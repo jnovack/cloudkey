@@ -1,0 +1,16 @@
+[Unit]
+Description=CloudKey UI
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/cloudkey
+EnvironmentFile=/etc/cloudkey.env
+Type=Simple
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=30
+StartLimitBurst=3
+PIDFile=/var/run/cloudkey.pid
+
+[Install]
+WantedBy=multi-user.target
