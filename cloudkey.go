@@ -8,6 +8,7 @@ import (
 	"os/signal"
 
 	"github.com/jnovack/cloudkey/src/leds"
+	"github.com/tabalt/pidfile"
 
 	journal "github.com/coreos/go-systemd/journal"
 	_ "github.com/jnovack/cloudkey/fonts"
@@ -24,6 +25,7 @@ var (
 	delay = flag.Float64("delay", 7500, "delay in milliseconds between screens")
 	reset = flag.Bool("reset", false, "reset/clear the screen")
 	demo  = flag.Bool("demo", false, "use fake data for display only")
+	pidf  = flag.String("pidfile", "/var/run/cloudkey.pid", "pidfile")
 )
 
 func j(message string) {
@@ -54,6 +56,8 @@ func main() {
 func init() {
 	flag.Parse()
 
+	pid, _ := pidfile.Create(pidf)
+
 	// Setup Service
 	// https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/
 	j(fmt.Sprintf("Starting cloudkey service"))
@@ -66,6 +70,7 @@ func init() {
 		s := <-sigs
 		j(fmt.Sprintf("Received signal '%s', shutting down", s))
 		j("Stopping cloudkey service")
+		_ = pid.Clear()
 		os.Exit(1)
 	}()
 
