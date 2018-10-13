@@ -39,10 +39,9 @@ var (
 	// GoVersion supplied by the runtime
 	GoVersion = runtime.Version()
 )
-func buildInfo() string {
-	return fmt.Sprintf("zeromon version %s git revision %s go version %s", Version, Revision, GoVersion)
-}
 
+func buildInfo() string {
+	return fmt.Sprintf("cloudkey version %s git revision %s go version %s", Version, Revision, GoVersion)
 }
 
 func main() {
