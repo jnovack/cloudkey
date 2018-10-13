@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 
 	"github.com/jnovack/cloudkey/src/leds"
 	"github.com/tabalt/pidfile"
@@ -28,6 +29,19 @@ var (
 	pidf  = flag.String("pidfile", "/var/run/cloudkey.pid", "pidfile")
 )
 
+var (
+	// Version supplied by the linker
+	Version = "v0.0.0"
+	// Revision supplied by the linker
+	Revision = "00000000"
+	// GoVersion supplied by the runtime
+	GoVersion = runtime.Version()
+)
+s
+func buildInfo() string {
+	return fmt.Sprintf("zeromon version %s git revision %s go version %s", Version, Revision, GoVersion)
+}
+
 func j(message string) {
 	err := journal.Send(message, journal.PriInfo, tags)
 	if err != nil {
@@ -36,6 +50,7 @@ func j(message string) {
 }
 
 func main() {
+	fmt.Println(buildInfo())
 	clear()
 
 	// Build the screens in the background
