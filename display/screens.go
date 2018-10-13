@@ -1,4 +1,4 @@
-package screens
+package display
 
 import (
 	"fmt"
@@ -7,13 +7,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/dustin/go-humanize"
+	humanize "github.com/dustin/go-humanize"
 	"github.com/jnovack/cloudkey/images"
 	"github.com/jnovack/cloudkey/src/network"
 	"github.com/jnovack/speedtest"
 )
 
-func buildNetwork(i int) {
+func buildNetwork(i int, demo bool) {
 	screen := screens[i]
 	hostname := "cloudkey-gen2.local"
 	lan := "192.168.10.111"
@@ -27,21 +27,27 @@ func buildNetwork(i int) {
 	// Loop Every Hour
 	go func() {
 		for {
-			if !*demo {
+			if !demo {
 				hostname, _ = os.Hostname()
+			}
+			write(screen, hostname, 22, 1, 12, "lato-regular")
+
+			if !demo {
 				lan, _ = network.LANIP()
+			}
+			write(screen, lan, 22, 21, 12, "lato-regular")
+
+			if !demo {
 				wan, _ = network.WANIP()
 			}
-
-			write(screen, hostname, 22, 1, 12, "lato-regular")
-			write(screen, lan, 22, 21, 12, "lato-regular")
 			write(screen, wan, 22, 41, 12, "lato-regular")
+
 			time.Sleep(59 * time.Minute)
 		}
 	}()
 }
 
-func buildSpeedTest(i int) {
+func buildSpeedTest(i int, demo bool) {
 	dmsg := "calculating..."
 	umsg := "calculating..."
 	tmsg := "in progress"
@@ -57,7 +63,7 @@ func buildSpeedTest(i int) {
 	draw.Draw(screen, image.Rect(2, 22, 2+16, 22+16), images.Load("upload"), image.ZP, draw.Src)
 	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("clock"), image.ZP, draw.Src)
 
-	if *demo {
+	if demo {
 		dmsg = "86.1 Mb/s"
 		umsg = "43.9 Mb/s"
 		tmsg = "25 minutes ago"
@@ -87,11 +93,11 @@ func buildSpeedTest(i int) {
 
 				server := client.SelectServer(&speedtest.Opts{})
 
-				j(fmt.Sprintf("Hosted by %s (%s) [%.2f km]: %d ms\n",
+				fmt.Printf("Hosted by %s (%s) [%.2f km]: %d ms\n",
 					server.Sponsor,
 					server.Name,
 					server.Distance,
-					server.Latency/time.Millisecond))
+					server.Latency/time.Millisecond)
 
 				go func() { download <- server.DownloadSpeed() }()
 
@@ -116,7 +122,7 @@ func buildSpeedTest(i int) {
 				}
 
 				lastcheck = time.Now()
-				j(fmt.Sprintf("Download: %s / Upload: %s", dmsg, umsg))
+				fmt.Printf("Download: %s / Upload: %s\n", dmsg, umsg)
 				myLeds.LED("blue").On()
 				time.Sleep(59 * time.Minute)
 			}
