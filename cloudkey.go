@@ -11,7 +11,6 @@ import (
 	"github.com/jnovack/cloudkey/src/leds"
 	"github.com/tabalt/pidfile"
 
-	journal "github.com/coreos/go-systemd/journal"
 	_ "github.com/jnovack/cloudkey/fonts"
 	_ "github.com/jnovack/cloudkey/screens"
 )
@@ -42,11 +41,6 @@ func buildInfo() string {
 	return fmt.Sprintf("zeromon version %s git revision %s go version %s", Version, Revision, GoVersion)
 }
 
-func j(message string) {
-	err := journal.Send(message, journal.PriInfo, tags)
-	if err != nil {
-		log.Fatalf("%s", err)
-	}
 }
 
 func main() {
@@ -75,7 +69,7 @@ func init() {
 
 	// Setup Service
 	// https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/
-	j(fmt.Sprintf("Starting cloudkey service"))
+	fmt.Println("Starting cloudkey service")
 	// setup signal catching
 	sigs := make(chan os.Signal, 1)
 	// catch all signals since not explicitly listing
@@ -83,8 +77,8 @@ func init() {
 	// method invoked upon seeing signal
 	go func() {
 		s := <-sigs
-		j(fmt.Sprintf("Received signal '%s', shutting down", s))
-		j("Stopping cloudkey service")
+		fmt.Printf("Received signal '%s', shutting down\n", s)
+		fmt.Println("Stopping cloudkey service")
 		_ = pid.Clear()
 		os.Exit(1)
 	}()
