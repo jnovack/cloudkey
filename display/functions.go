@@ -1,4 +1,4 @@
-package screens
+package display
 
 import (
 	"fmt"
@@ -7,18 +7,11 @@ import (
 	"image/draw"
 	"log"
 	"math"
-	"math/rand"
 	"time"
 
 	"github.com/golang/freetype"
 	"github.com/jnovack/cloudkey/fonts"
-	"github.com/jnovack/cloudkey/images"
-	"github.com/jnovack/cloudkey/src/framebuffer"
 )
-
-var fb draw.Image
-var screens [2]draw.Image
-var width, height int
 
 // Colors from Black to White
 var colors = []color.Gray{
@@ -61,6 +54,31 @@ var fades = []color.Alpha{
 	color.Alpha{0x00},
 }
 
+// Output the screen/image immediately to the framebuffer
+func Output(i int) {
+	screen := screens[i]
+	draw.Draw(fb, fb.Bounds(), screen, image.ZP, draw.Over)
+}
+
+// ClearScreen clears... the... screen
+func clearScreen() {
+	draw.Draw(fb, fb.Bounds(), image.NewUniform(color.Gray{0}), image.ZP, draw.Src)
+}
+
+// colorTest the screen for funsies
+func colorTest() {
+	for x := range colors {
+		fmt.Printf("%d\r", x)
+		draw.Draw(fb, fb.Bounds(), image.NewUniform(colors[x]), image.ZP, draw.Src)
+		time.Sleep(32 * time.Millisecond)
+	}
+	for x := range colors {
+		fmt.Printf("%d\r", x)
+		draw.Draw(fb, fb.Bounds(), image.NewUniform(colors[len(colors)-1-x]), image.ZP, draw.Src)
+		time.Sleep(32 * time.Millisecond)
+	}
+}
+
 // Fade the current screen, in or out (default out)
 func fade(inverse bool) {
 	capture := image.NewGray(fb.Bounds())
@@ -84,27 +102,8 @@ func fade(inverse bool) {
 	}
 }
 
-func colorTest() {
-	for x := range colors {
-		fmt.Printf("%d\r", x)
-		draw.Draw(fb, fb.Bounds(), image.NewUniform(colors[x]), image.ZP, draw.Src)
-		time.Sleep(32 * time.Millisecond)
-	}
-	for x := range colors {
-		fmt.Printf("%d\r", x)
-		draw.Draw(fb, fb.Bounds(), image.NewUniform(colors[len(colors)-1-x]), image.ZP, draw.Src)
-		time.Sleep(32 * time.Millisecond)
-	}
-}
-
-// Display sends the screen/image immediately to the framebuffer
-func display(i int) {
-	screen := screens[i]
-	draw.Draw(fb, fb.Bounds(), screen, image.ZP, draw.Over)
-}
-
-// Fast and smooth (default)
-func startFadeCarousel() {
+// startFadeCarousel Fast and smooth (default)
+func startFadeCarousel(delay float64) {
 	for {
 		for s := range screens {
 			capture := image.NewGray(fb.Bounds())
@@ -126,13 +125,13 @@ func startFadeCarousel() {
 				draw.Draw(fb, fb.Bounds(), bg, image.ZP, draw.Over)
 				time.Sleep(8 * time.Millisecond)
 			}
-			time.Sleep(time.Duration(*delay) * time.Millisecond)
+			time.Sleep(time.Duration(delay) * time.Millisecond)
 		}
 	}
 }
 
-// Very slow and CPU intensive on arm
-func startXCarousel() {
+// startXCarousel Very slow and CPU intensive on arm
+func startXCarousel(delay float64) {
 	capture := image.NewGray(fb.Bounds())
 	for i := 0; i < 2; i++ {
 		for s := range screens {
@@ -146,13 +145,13 @@ func startXCarousel() {
 				// Send it all to the framebuffer
 				draw.Draw(fb, fb.Bounds(), capture, image.ZP, draw.Over)
 			}
-			time.Sleep(time.Duration(*delay) * time.Millisecond)
+			time.Sleep(time.Duration(delay) * time.Millisecond)
 		}
 	}
 }
 
-// slow and cpu intensive in bursts on arm
-func startYCarousel() {
+// startYCarousel slow and cpu intensive in bursts on arm
+func startYCarousel(delay float64) {
 	capture := image.NewGray(fb.Bounds())
 	for i := 0; i < 2; i++ {
 		for s := range screens {
@@ -166,54 +165,12 @@ func startYCarousel() {
 				// Send it all to the framebuffer
 				draw.Draw(fb, fb.Bounds(), capture, image.ZP, draw.Over)
 			}
-			time.Sleep(time.Duration(*delay) * time.Millisecond)
+			time.Sleep(time.Duration(delay) * time.Millisecond)
 		}
 	}
 }
 
-// Clear clears the screen
-func clear() {
-	draw.Draw(fb, fb.Bounds(), image.NewUniform(color.Gray{0}), image.ZP, draw.Src)
-}
-
-// Loader gives times for everything time to populate (loaders in 2018?)
-func load() {
-	// Framebuffer has global scope
-	var err error
-	fb, err = framebuffer.Open("/dev/fb0")
-	if err != nil {
-		panic(err)
-	}
-
-	width = fb.Bounds().Max.X
-	height = fb.Bounds().Max.Y
-
-	// Set up additional screens
-	for x := range screens {
-		screens[x] = image.NewRGBA(fb.Bounds())
-	}
-
-	j(fmt.Sprintf("Resolution: %dx%d pixels", width, height))
-	clear()
-
-	draw.Draw(fb, image.Rect(64, 8, 64+32, 8+32), images.Load("logo"), image.ZP, draw.Src)
-
-	// Outline the loader line
-	for i := 0; i < 100; i++ {
-		fb.Set(30+i, 52, colors[3])
-	}
-
-	// Fill the loader line
-	// This is just a delay right now, do your checks here!
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 0; i < 100; i++ {
-		fb.Set(30+i, 52, colors[15])
-		time.Sleep(time.Duration(r.Intn(32)) * time.Millisecond)
-		// mathmatically, the average sleep time is about half of the seed number
-	}
-	// fade(false)
-}
-
+// Write draws text to a x,y coordinate on the image
 func write(screen draw.Image, text string, x, y int, size float64, fontname string) {
 	font := fonts.Load(fontname)
 	// Setup new context
