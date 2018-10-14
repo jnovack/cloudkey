@@ -4,7 +4,7 @@ release := $(shell git describe --tags | cut -d"-" -f 1,2)
 build_date := $(shell date -u +"%Y-%m-%dT%H:%M:%S+00:00")
 application := $(shell basename `pwd`)
 
-GO_LDFLAGS := "-X github.com/jnovack/cloudkey/src/build.Application=${application} -X github.com/jnovack/cloudkey/src/build.Version=${version} -X github.com/jnovack/cloudkey/src/build.Revision=${revision}"
+GO_LDFLAGS := "-X github.com/jnovack/go-version.Application=${application} -X github.com/jnovack/go-version.Version=${version} -X github.com/jnovack/go-version.Revision=${revision} -X github.com/jnovack/go-version.BuildDate=${build_date}"
 
 all: build
 
