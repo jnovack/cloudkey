@@ -9,6 +9,14 @@ Generation 2 device.
 
 ## Installation
 
+### Quick Start
+
+1. `ssh ubnt@UniFi-CloudKeyG2`
+2. `mv /usr/bin/ck-ui /usr/bin/ck-ui.original`
+3. `curl -Lo /usr/local/ck-ui LINK_FROM_RELEASES_PAGE`
+
+### Developers
+
 1. Have a working Go environment.
 2. `GOOS=linux GOARCH=arm go build cloudkey.go`
 3. SCP the file over to your Cloud Key.
@@ -16,17 +24,19 @@ Generation 2 device.
 At this point, you can choose to backup and overwrite the `/usr/bin/ck-ui`
 file or create a new systemd service, depending on your linux experience.
 
-### Using the `systemd` Service
+#### Using the `systemd` Service
 
-End the old service first.
+Disable the old service first.
 
 1. `systemctl disable ck-ui`
+2. `systemctl stop ck-ui`
 
-Then use the custom one.
+Install this one.
 
-1. SCP `cloudkey.service` to the `/lib/systemd/system/` directory.
-2. `systemctl enable cloudkey`
-3. `systemctl start cloudkey`
+1. scp `cloudkey.service` to the `/lib/systemd/system/` directory.
+2. `touch /etc/cloudkey.env`
+3. `systemctl enable cloudkey`
+4. `systemctl start cloudkey`
 
 ## Why?
 
