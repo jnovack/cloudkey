@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 
+	_ "github.com/jnovack/go-version"
+
 	"github.com/tabalt/pidfile"
 
 	"github.com/coreos/pkg/flagutil"

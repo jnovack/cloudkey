@@ -7,8 +7,9 @@ import (
 	"math/rand"
 	"time"
 
+	build "github.com/jnovack/go-version"
+
 	"github.com/jnovack/cloudkey/images"
-	"github.com/jnovack/cloudkey/src/build"
 	"github.com/jnovack/cloudkey/src/framebuffer"
 	"github.com/jnovack/cloudkey/src/leds"
 )
