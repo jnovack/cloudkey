@@ -2,8 +2,9 @@ version := $(shell git describe --tags)
 revision := $(shell git rev-parse HEAD)
 release := $(shell git describe --tags | cut -d"-" -f 1,2)
 build_date := $(shell date -u +"%Y-%m-%dT%H:%M:%S+00:00")
+application := $(shell basename `pwd`)
 
-GO_LDFLAGS := "-X main.Version=${version} -X main.Revision=${revision}"
+GO_LDFLAGS := "-X github.com/jnovack/cloudkey/src/build.Application=${application} -X github.com/jnovack/cloudkey/src/build.Version=${version} -X github.com/jnovack/cloudkey/src/build.Revision=${revision}"
 
 all: build
 
