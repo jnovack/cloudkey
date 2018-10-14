@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"runtime"
 
 	"github.com/tabalt/pidfile"
 
@@ -20,21 +19,7 @@ var tags = map[string]string{
 
 var opts display.CmdLineOpts
 
-var (
-	// Version supplied by the linker
-	Version = "v0.0.0"
-	// Revision supplied by the linker
-	Revision = "00000000"
-	// GoVersion supplied by the runtime
-	GoVersion = runtime.Version()
-)
-
-func buildInfo() string {
-	return fmt.Sprintf("cloudkey version %s git revision %s go version %s", Version, Revision, GoVersion)
-}
-
 func main() {
-	fmt.Println(buildInfo())
 	display.New(opts)
 }
 
