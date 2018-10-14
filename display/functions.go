@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/golang/freetype"
+	"github.com/golang/freetype/truetype"
 	"github.com/jnovack/cloudkey/fonts"
 )
 
@@ -54,13 +55,7 @@ var fades = []color.Alpha{
 	color.Alpha{0x00},
 }
 
-// Output the screen/image immediately to the framebuffer
-func Output(i int) {
-	screen := screens[i]
-	draw.Draw(fb, fb.Bounds(), screen, image.ZP, draw.Over)
-}
-
-// ClearScreen clears... the... screen
+// clearScreen clears... the... screen
 func clearScreen() {
 	draw.Draw(fb, fb.Bounds(), image.NewUniform(color.Gray{0}), image.ZP, draw.Src)
 }
@@ -187,4 +182,35 @@ func write(screen draw.Image, text string, x, y int, size float64, fontname stri
 		log.Println(err)
 		return
 	}
+}
+
+func center(screen draw.Image, text string, x, y int, size float64, fontname string) {
+	font := fonts.Load(fontname)
+	// Setup new context
+	c := freetype.NewContext()
+	c.SetFont(font)        // Set the font
+	c.SetFontSize(size)    // Set font size
+	c.SetDPI(72)           // Fixed DPI
+	c.SetClip(fb.Bounds()) // Clip the text?
+	c.SetDst(fb)           // Send it where?
+	c.SetSrc(image.White)  // Color of Foreground
+
+	// Truetype stuff
+	opts := truetype.Options{}
+	opts.DPI = 72
+	opts.Size = size + 1
+	face := truetype.NewFace(font, &opts)
+
+	var widths int
+	// Calculate the widths and print to image
+
+	for _, t := range text {
+		awidth, ok := face.GlyphAdvance(rune(t))
+		if ok != true {
+			return
+		}
+		iwidthf := int(float64(awidth) / 64)
+		widths = widths + iwidthf
+	}
+	write(fb, text, width/2-widths/2, y, size, fontname)
 }

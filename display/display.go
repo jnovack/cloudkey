@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jnovack/cloudkey/images"
+	"github.com/jnovack/cloudkey/src/build"
 	"github.com/jnovack/cloudkey/src/framebuffer"
 	"github.com/jnovack/cloudkey/src/leds"
 )
@@ -32,7 +33,9 @@ func init() {
 	myLeds.LED("white").On()
 
 	// Framebuffer has global scope
-	fb, err := framebuffer.Open("/dev/fb0")
+	// therefore err must have local scope to prevent redefining
+	var err error
+	fb, err = framebuffer.Open("/dev/fb0")
 	if err != nil {
 		panic(err)
 	}
@@ -48,18 +51,20 @@ func init() {
 		screens[x] = image.NewRGBA(fb.Bounds())
 	}
 
-	draw.Draw(fb, image.Rect(64, 8, 64+32, 8+32), images.Load("logo"), image.ZP, draw.Src)
+	draw.Draw(fb, image.Rect(64, 4, 64+32, 4+32), images.Load("logo"), image.ZP, draw.Src)
+
+	center(fb, build.Version, 80, 40, 8, "lato-regular")
 
 	// Outline the loader line
 	for i := 0; i < 100; i++ {
-		fb.Set(30+i, 52, colors[3])
+		fb.Set(30+i, 56, colors[3])
 	}
 
 	// Fill the loader line
 	// This is just a delay right now, do your checks here!
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < 100; i++ {
-		fb.Set(30+i, 52, colors[15])
+		fb.Set(30+i, 56, colors[15])
 		// mathmatically, the average sleep time is about half of the seed number
 		time.Sleep(time.Duration(r.Intn(50)) * time.Millisecond)
 	}
@@ -82,4 +87,10 @@ func New(opts CmdLineOpts) {
 func Shutdown() {
 	myLeds.LED("blue").Off()
 	myLeds.LED("white").Off()
+}
+
+// Output the screen/image immediately to the framebuffer
+func Output(i int) {
+	screen := screens[i]
+	draw.Draw(fb, fb.Bounds(), screen, image.ZP, draw.Over)
 }
