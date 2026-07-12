@@ -50,11 +50,18 @@ func clearScreen() {
 }
 
 // fadeStep renders target over the framebuffer at the given alpha; shared by
-// fadeOut and fadeIn.
+// fadeOut and fadeIn. target is one of the shared images in screens, which a
+// build* goroutine may be redrawing concurrently (see screens.go), so the
+// pixel read is held under screenMu — the same lock those goroutines take
+// before calling their drawX function.
 func fadeStep(target draw.Image, alpha color.Alpha) {
 	bg := image.NewGray(fb.Bounds())
 	draw.Draw(bg, bg.Bounds(), image.NewUniform(color.Gray{0}), image.Point{}, draw.Src)
+
+	screenMu.Lock()
 	draw.DrawMask(bg, bg.Bounds(), target, image.Point{}, image.NewUniform(alpha), image.Point{}, draw.Over)
+	screenMu.Unlock()
+
 	draw.Draw(fb, fb.Bounds(), bg, image.Point{}, draw.Over)
 }
 

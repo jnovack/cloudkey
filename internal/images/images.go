@@ -31,12 +31,18 @@ func init() {
 	assets["clock"] = clock
 	assets["dockerOff"] = dockerOff
 	assets["dockerOn"] = dockerOn
+	assets["cpu"] = cpu
 	assets["download"] = download
 	assets["downloadIdle"] = downloadIdle
+	assets["hardDrive"] = hardDrive
+	assets["hdd"] = hdd
 	assets["host"] = host
 	assets["internet"] = internet
 	assets["logo"] = logo
+	assets["memory"] = memory
 	assets["network"] = network
+	assets["sdcard"] = sdcard
 	assets["upload"] = upload
 	assets["uploadIdle"] = uploadIdle
+	assets["warning"] = warning
 }

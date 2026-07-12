@@ -4,7 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/rs/zerolog"
@@ -16,6 +18,7 @@ import (
 	"github.com/jnovack/cloudkey/internal/buildversion"
 	"github.com/jnovack/cloudkey/internal/display"
 	_ "github.com/jnovack/cloudkey/internal/fonts"
+	"github.com/jnovack/cloudkey/pkg/resetbutton"
 )
 
 var opts display.CmdLineOpts
@@ -40,6 +43,16 @@ func main() {
 
 	pid, _ := pidfile.Create(opts.Pidfile)
 
+	if opts.ResetButtonCmd != "" {
+		go func() {
+			err := resetbutton.Watch(func() {
+				display.BlinkResetAck()
+				runResetButtonCmd(opts.ResetButtonCmd)
+			})
+			log.Error().Err(err).Msg("reset button watcher exited")
+		}()
+	}
+
 	// Setup Service
 	// https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/
 
@@ -60,13 +73,40 @@ func main() {
 	display.New(opts)
 }
 
+// resetButtonBusy is 1 while the configured reset-button command is
+// running, 0 otherwise.
+var resetButtonBusy int32
+
+// runResetButtonCmd runs the configured reset-button command in the
+// background. A press that arrives while a previous run is still in flight
+// is dropped rather than queued or overlapped - a slow or stuck command
+// (a network call, say) should not pile up concurrent runs just because
+// someone tapped the button more than once.
+func runResetButtonCmd(cmdStr string) {
+	if !atomic.CompareAndSwapInt32(&resetButtonBusy, 0, 1) {
+		log.Warn().Msg("reset button pressed again while previous command is still running, ignoring")
+		return
+	}
+	log.Warn().Str("cmd", cmdStr).Msg("reset button pressed")
+	go func() {
+		defer atomic.StoreInt32(&resetButtonBusy, 0)
+		out, err := exec.Command("/bin/sh", "-c", cmdStr).CombinedOutput()
+		if err != nil {
+			log.Error().Err(err).Str("output", string(out)).Msg("reset button command failed")
+			return
+		}
+		log.Info().Str("output", string(out)).Msg("reset button command finished")
+	}()
+}
+
 func init() {
-	flag.Float64Var(&opts.Delay, "delay", 4000, "delay in milliseconds each screen stays lit")
+	flag.Float64Var(&opts.Delay, "delay", 5000, "delay in milliseconds each screen stays lit")
 	flag.Float64Var(&opts.BlankDelay, "blank-delay", 3000, "delay in milliseconds screens stay blanked between screens")
 	flag.BoolVar(&opts.Reset, "reset", false, "reset/clear the screen")
 	flag.BoolVar(&opts.Demo, "demo", false, "use fake data for display only")
 	flag.BoolVar(&opts.SpeedTest, "speedtest", false, "enable and display the speedtest screen")
 	flag.StringVar(&opts.Pidfile, "pidfile", "/var/run/zeromon.pid", "pidfile")
 	flag.BoolVar(&opts.Version, "version", false, "print version and exit")
+	flag.StringVar(&opts.ResetButtonCmd, "reset-button-cmd", "", "shell command to run on a single physical reset-button press (empty disables)")
 	flagutil.SetFlagsFromEnv(flag.CommandLine, "CLOUDKEY")
 }

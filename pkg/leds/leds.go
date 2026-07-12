@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // https://scene-si.org/2016/07/19/building-your-own-build-status-indicator-with-golang-and-rpi3/
@@ -56,6 +57,58 @@ func (r LED) Off() LED {
 func (r LED) Brightness(i int) LED {
 	r.write("trigger", "none")
 	return r.write("brightness", strconv.Itoa(i))
+}
+
+// currentBrightness reads the led's live brightness value from sysfs, the
+// starting point for a fade.
+func (r LED) currentBrightness() int {
+	b, err := r.read("brightness")
+	if err != nil {
+		log.Printf("led read brightness: %v", err)
+		return 0
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		log.Printf("led parse brightness: %v", err)
+		return 0
+	}
+	return v
+}
+
+// fade steps brightness linearly from the led's current value to target over
+// duration, blocking until done. Like the other setters it clears any
+// running trigger (via Brightness).
+func (r LED) fade(target int, duration time.Duration) LED {
+	const steps = 15
+	start := r.currentBrightness()
+	interval := duration / steps
+	for i := 1; i <= steps; i++ {
+		r.Brightness(start + (target-start)*i/steps)
+		time.Sleep(interval)
+	}
+	return r
+}
+
+// FadeIn ramps the led linearly from its current brightness up to maximum
+// over duration, blocking until done.
+func (r LED) FadeIn(duration time.Duration) LED {
+	max, err := r.read("max_brightness")
+	if err != nil {
+		log.Printf("led read max_brightness: %v", err)
+		return r
+	}
+	target, err := strconv.Atoi(strings.TrimSpace(string(max)))
+	if err != nil {
+		log.Printf("led parse max_brightness: %v", err)
+		return r
+	}
+	return r.fade(target, duration)
+}
+
+// FadeOut ramps the led linearly from its current brightness down to zero
+// over duration, blocking until done.
+func (r LED) FadeOut(duration time.Duration) LED {
+	return r.fade(0, duration)
 }
 
 // Blink creates a blinking trigger action

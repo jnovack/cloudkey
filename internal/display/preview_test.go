@@ -31,9 +31,24 @@ func TestPreviewScreens(t *testing.T) {
 		name string
 		draw func(draw.Image)
 	}{
-		{"local", func(s draw.Image) { drawLocal(s, "cloudkey-gen2.local", "192.168.10.111") }},
-		{"remote", func(s draw.Image) { drawRemote(s, time.Date(2026, 7, 11, 14, 32, 0, 0, time.UTC), "203.0.113.32") }},
+		{"host", func(s draw.Image) { drawHost(s, "cloudkey-gen2.local", time.Date(2026, 7, 11, 14, 32, 0, 0, time.UTC)) }},
+		{"network", func(s draw.Image) { drawNetwork(s, "192.168.10.111", "203.0.113.32") }},
 		{"speedtest", func(s draw.Image) { drawSpeedTest(s, "86.10 Mb", "43.90 Mb", "25 minutes ago") }},
+		{"storage", func(s draw.Image) {
+			drawStorage(s,
+				storageDisplay{gb: "23.4GB", percent: "45%"},
+				storageDisplay{gb: "897GB", percent: "92%", warn: true},
+			)
+		}},
+		{"storage-not-mounted", func(s draw.Image) {
+			drawStorage(s,
+				storageDisplay{notMounted: true},
+				storageDisplay{notMounted: true},
+			)
+		}},
+		{"system", func(s draw.Image) {
+			drawSystem(s, "56%", "34%", storageDisplay{gb: "45GB", percent: "34%"})
+		}},
 	}
 	for _, c := range cases {
 		img := image.NewRGBA(image.Rect(0, 0, w, h))
