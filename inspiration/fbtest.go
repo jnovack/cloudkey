@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 // Copyright 2010 The Freetype-Go Authors. All rights reserved.
@@ -96,18 +98,6 @@ func localIP() (string, error) {
 		}
 	}
 	return "", errors.New("network not found")
-}
-
-func drawEveryPixel() {
-	// Draw the guidelines.
-	// for i := 0; i < width; i++ {
-	// for j := 0; j < height; j++ {
-	// fb.Set(i, j, colors[x])
-	// fmt.Printf("%d: %dx%d\r", x, i, j)
-	// }
-	// time.Sleep(10 * time.Millisecond)
-	// }
-	// time.Sleep(1000 * time.Millisecond)
 }
 
 func main() {

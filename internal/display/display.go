@@ -9,12 +9,12 @@ import (
 
 	build "github.com/jnovack/go-version"
 
-	"github.com/jnovack/cloudkey/images"
-	"github.com/jnovack/cloudkey/src/framebuffer"
-	"github.com/jnovack/cloudkey/src/leds"
+	"github.com/jnovack/cloudkey/internal/images"
+	"github.com/jnovack/cloudkey/pkg/framebuffer"
+	"github.com/jnovack/cloudkey/pkg/leds"
 )
 
-var screens [2]draw.Image
+var screens []draw.Image
 var myLeds leds.LEDS
 var fb draw.Image
 var width, height int
@@ -47,11 +47,6 @@ func init() {
 	fmt.Printf("Resolution: %dx%d pixels\n", width, height)
 	clearScreen()
 
-	// Set up additional screens
-	for x := range screens {
-		screens[x] = image.NewRGBA(fb.Bounds())
-	}
-
 	draw.Draw(fb, image.Rect(64, 4, 64+32, 4+32), images.Load("logo"), image.ZP, draw.Src)
 
 	center(fb, build.Version, 80, 40, 8, "lato-regular")
@@ -61,8 +56,8 @@ func init() {
 		fb.Set(30+i, 56, colors[3])
 	}
 
-	// Fill the loader line
-	// This is just a delay right now, do your checks here!
+	// Fill the loader line — add startup checks here before marking ready.
+	// Currently this is only a randomized delay for visual effect.
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for i := 0; i < 100; i++ {
 		fb.Set(30+i, 56, colors[15])
@@ -76,6 +71,16 @@ func init() {
 
 // New initializes the screens
 func New(opts CmdLineOpts) {
+	if opts.Reset {
+		clearScreen()
+		return
+	}
+
+	// Allocate the screens here so their count lives next to the builders below.
+	screens = make([]draw.Image, 0, 2)
+	screens = append(screens, image.NewRGBA(fb.Bounds())) // index 0: network
+	screens = append(screens, image.NewRGBA(fb.Bounds())) // index 1: speed test
+
 	// Build the screens in the background
 	buildNetwork(0, opts.Demo)
 	buildSpeedTest(1, opts.Demo)

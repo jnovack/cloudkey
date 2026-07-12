@@ -9,7 +9,6 @@ You should have received a copy of the CC0 Public Domain Dedication along with t
 package framebuffer
 
 import (
-	//"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -132,6 +131,7 @@ func (p *BGR32) Set(x, y int, c color.Color) {
 	p.Pix[i+0] = c1.B
 	p.Pix[i+1] = c1.G
 	p.Pix[i+2] = c1.R
+	// i+3 is the padding byte; BGR32 has no alpha channel (Transp.Length == 0).
 }
 
 func (p *BGR32) At(x, y int) color.Color {
@@ -195,11 +195,6 @@ func Open(name string) (draw.Image, error) {
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, file.Fd(), FBIOGET_VSCREENINFO, uintptr(unsafe.Pointer(&varInfo))); errno != 0 {
 		return nil, &os.SyscallError{Syscall: "SYS_IOCTL", Err: errno}
 	}
-	//fmt.Println("Red.Offset =", varInfo.Red.Offset, "Red.Length =", varInfo.Red.Length, "Red.Msb_right =", varInfo.Red.Msb_right)
-	//fmt.Println("Green.Offset =", varInfo.Green.Offset, "Green.Length =", varInfo.Green.Length, "Green.Msb_right =", varInfo.Green.Msb_right)
-	//fmt.Println("Blue.Offset =", varInfo.Blue.Offset, "Blue.Length =", varInfo.Blue.Length, "Blue.Msb_right =", varInfo.Blue.Msb_right)
-	//fmt.Println("Transp.Offset =", varInfo.Transp.Offset, "Transp.Length =", varInfo.Transp.Length, "Transp.Msb_right =", varInfo.Transp.Msb_right)
-	//fmt.Println("varInfo.Xres =", varInfo.Xres, "varInfo.Yres =", varInfo.Yres, "varInfo.Xoffset =", varInfo.Xoffset, "varInfo.Yoffset =", varInfo.Yoffset)
 	mmap, err := syscall.Mmap(int(file.Fd()), 0, int(fixInfo.Smem_len), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		return nil, err

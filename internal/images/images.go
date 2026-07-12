@@ -10,13 +10,15 @@ import (
 
 var assets map[string]string
 
-// Load ...
+// Load decodes the named PNG from the embedded asset registry.
+// It calls log.Fatal (terminating the process) if the name is not registered or
+// the embedded data cannot be decoded, since every registered image is a
+// required startup asset.
 func Load(name string) image.Image {
 	reader := base64.NewDecoder(base64.StdEncoding, strings.NewReader(assets[name]))
 	img, err := png.Decode(reader)
 	if err != nil {
 		log.Fatal(err)
-		return nil
 	}
 	return img
 }
@@ -24,9 +26,8 @@ func Load(name string) image.Image {
 func init() {
 	assets = make(map[string]string)
 
-	// Define the permitted fonts
-	// Golang has no concept of dynamic variables, because it's a compliled language
-	// All variables must be declared, cannot iterate through files and load consts
+	// Image data is compiled in as Go constant strings (see data.go).
+	// Register each asset name here so Load can find it by name.
 	assets["clock"] = clock
 	assets["dockerOff"] = dockerOff
 	assets["dockerOn"] = dockerOn

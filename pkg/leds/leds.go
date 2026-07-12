@@ -1,9 +1,9 @@
 package leds
 
 import (
-	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -14,32 +14,36 @@ type LED struct {
 	name string
 }
 
-// Filename displays the /sys path of the led
+// filename returns the /sys path of the led
 func (r LED) filename() string {
 	return "/sys/class/leds/" + r.name
 }
 
-func (r LED) read(where string) []byte {
+// read returns the contents of a sysfs attribute for the led.
+func (r LED) read(where string) ([]byte, error) {
 	filename := r.filename() + "/" + where
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return content
+	return os.ReadFile(filename)
 }
 
+// write sets a sysfs attribute for the led. Writes are best-effort: the sysfs
+// path may not exist on non-target hardware, so failures are logged, not fatal.
 func (r LED) write(where, what string) LED {
 	filename := r.filename() + "/" + where
-	// log.Printf("writing '%s' into '%s'", what, filename)
-	ioutil.WriteFile(filename, []byte(what), 0666)
+	if err := os.WriteFile(filename, []byte(what), 0666); err != nil {
+		log.Printf("led write %s: %v", filename, err)
+	}
 	return r
 }
 
 // On turns on the led to maximum brightness, and clears the current running trigger (if any)
 func (r LED) On() LED {
 	r.write("trigger", "none")
-	max := strings.TrimSuffix(string(r.read("max_brightness")), "\n")
-	return r.write("brightness", max)
+	max, err := r.read("max_brightness")
+	if err != nil {
+		log.Printf("led read max_brightness: %v", err)
+		return r
+	}
+	return r.write("brightness", strings.TrimSuffix(string(max), "\n"))
 }
 
 // Off turns off the led, sets to zero brightness, and clears the current running trigger (if any)
@@ -50,7 +54,8 @@ func (r LED) Off() LED {
 
 // Brightness sets the brightness directly, and clears the current running trigger (if any)
 func (r LED) Brightness(i int) LED {
-	return r
+	r.write("trigger", "none")
+	return r.write("brightness", strconv.Itoa(i))
 }
 
 // Blink creates a blinking trigger action
@@ -58,19 +63,15 @@ func (r LED) Blink(i int, onTime int, offTime int) LED {
 	r.write("trigger", "none")
 	r.Brightness(i)
 	r.write("trigger", "timer")
-	r.write("delay_on", string(onTime))
-	r.write("delay_off", string(offTime))
+	r.write("delay_on", strconv.Itoa(onTime))
+	r.write("delay_off", strconv.Itoa(offTime))
 	return r
 }
 
+// LEDS is a factory for individual LEDs.
 type LEDS struct{}
 
-// LED Set an LED
+// LED returns a handle to the named led.
 func (r LEDS) LED(name string) LED {
-	var err error
-	led := LED{name: name}
-	if err != nil {
-		fmt.Println(err)
-	}
-	return led
+	return LED{name: name}
 }
