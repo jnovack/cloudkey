@@ -18,36 +18,96 @@ import (
 // converts bytes/sec to mebibits/sec (Mb): bytes * 8 bits / 2^20.
 const bytesToMebibits = 1 << 17
 
-func buildNetwork(i int, demo bool) {
+// drawLocal renders the hostname/LAN-IP layout onto screen, large and
+// centered so the screen stays readable as the OLED ages. It redraws from a
+// blank background each call: centered text shifts position whenever its
+// width changes, so a partial redraw would leave stale glyphs behind.
+func drawLocal(screen draw.Image, hostname, lan string) {
+	draw.Draw(screen, screen.Bounds(), image.Black, image.ZP, draw.Src)
+	center(screen, hostname, 8, 14, "lato-regular", true)
+	center(screen, lan, 34, 13, "lato-regular", false)
+}
+
+// drawRemote renders the date/time + WAN-IP layout onto screen, large and
+// centered.
+func drawRemote(screen draw.Image, now time.Time, wan string) {
+	draw.Draw(screen, screen.Bounds(), image.Black, image.ZP, draw.Src)
+	center(screen, now.Format("2006-01-02 15:04"), 8, 13, "lato-regular", true)
+	center(screen, wan, 34, 13, "lato-regular", false)
+}
+
+// drawSpeedTest renders the speedtest layout (icons + stats) onto screen.
+func drawSpeedTest(screen draw.Image, dmsg, umsg, tmsg string) {
+	draw.Draw(screen, screen.Bounds(), image.Black, image.ZP, draw.Src)
+	draw.Draw(screen, image.Rect(2, 2, 2+16, 2+16), images.Load("download"), image.ZP, draw.Src)
+	draw.Draw(screen, image.Rect(2, 22, 2+16, 22+16), images.Load("upload"), image.ZP, draw.Src)
+	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("clock"), image.ZP, draw.Src)
+	write(screen, dmsg, 22, 1, 12, "lato-regular", false)
+	write(screen, umsg, 22, 21, 12, "lato-regular", false)
+	write(screen, tmsg, 22, 41, 12, "lato-regular", false)
+}
+
+// buildLocal starts the goroutine that keeps the hostname/LAN-IP screen
+// up to date.
+func buildLocal(i int, demo bool) {
 	screen := screens[i]
 	hostname := "cloudkey-gen2.local"
 	lan := "192.168.10.111"
-	wan := "203.0.113.32"
 
-	draw.Draw(screen, screen.Bounds(), image.Black, image.ZP, draw.Src)
-	draw.Draw(screen, image.Rect(2, 2, 2+16, 2+16), images.Load("host"), image.ZP, draw.Src)
-	draw.Draw(screen, image.Rect(2, 22, 2+16, 22+16), images.Load("network"), image.ZP, draw.Src)
-	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("internet"), image.ZP, draw.Src)
-
-	// Loop Every Hour
 	go func() {
 		for {
 			if !demo {
 				hostname, _ = os.Hostname()
 			}
-			write(screen, hostname, 22, 1, 12, "lato-regular")
-
 			if !demo {
 				lan, _ = network.LANIP()
 			}
-			write(screen, lan, 22, 21, 12, "lato-regular")
 
-			if !demo {
-				wan, _ = network.WANIP()
-			}
-			write(screen, wan, 22, 41, 12, "lato-regular")
+			drawLocal(screen, hostname, lan)
 
 			time.Sleep(59 * time.Minute)
+		}
+	}()
+}
+
+// buildRemote starts the goroutines that keep the date/time + WAN-IP screen
+// up to date. The clock line refreshes frequently; the WAN IP is looked up
+// hourly like the rest of the network info.
+func buildRemote(i int, demo bool) {
+	screen := screens[i]
+	// Live deployments show "checking..." until the first WANIP() lookup
+	// succeeds, rather than a placeholder that looks like a real address.
+	wan := "checking..."
+	if demo {
+		wan = "203.0.113.32"
+	}
+
+	// mu guards wan, which is written by the hourly lookup goroutine and
+	// read by the clock-refresh goroutine.
+	var mu sync.Mutex
+
+	go func() {
+		for {
+			if !demo {
+				if w, err := network.WANIP(); err == nil {
+					mu.Lock()
+					wan = w
+					mu.Unlock()
+				}
+			}
+			time.Sleep(59 * time.Minute)
+		}
+	}()
+
+	go func() {
+		for {
+			mu.Lock()
+			w := wan
+			mu.Unlock()
+
+			drawRemote(screen, time.Now(), w)
+
+			time.Sleep(30 * time.Second)
 		}
 	}()
 }
@@ -67,20 +127,15 @@ func buildSpeedTest(i int, demo bool) {
 
 	screen := screens[i]
 
-	draw.Draw(screen, screen.Bounds(), image.Black, image.ZP, draw.Src)
-	draw.Draw(screen, image.Rect(2, 2, 2+16, 2+16), images.Load("download"), image.ZP, draw.Src)
-	draw.Draw(screen, image.Rect(2, 22, 2+16, 22+16), images.Load("upload"), image.ZP, draw.Src)
-	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("clock"), image.ZP, draw.Src)
-
 	if demo {
 		dmsg = "86.1 Mb/s"
 		umsg = "43.9 Mb/s"
 		tmsg = "25 minutes ago"
-		write(screen, dmsg, 22, 1, 12, "lato-regular")
-		write(screen, umsg, 22, 21, 12, "lato-regular")
-		write(screen, tmsg, 22, 41, 12, "lato-regular")
+		drawSpeedTest(screen, dmsg, umsg, tmsg)
 		return
 	}
+
+	drawSpeedTest(screen, dmsg, umsg, tmsg)
 
 	client := speedtest.NewClient(&speedtest.Opts{})
 
@@ -92,10 +147,7 @@ func buildSpeedTest(i int, demo bool) {
 			mu.Unlock()
 
 			tmsg = humanize.Time(lc)
-			draw.Draw(screen, image.Rect(20, 0, 160, 60), image.Black, image.ZP, draw.Src)
-			write(screen, d, 22, 1, 12, "lato-regular")
-			write(screen, u, 22, 21, 12, "lato-regular")
-			write(screen, tmsg, 22, 41, 12, "lato-regular")
+			drawSpeedTest(screen, d, u, tmsg)
 			time.Sleep(10 * time.Second)
 		}
 	}()

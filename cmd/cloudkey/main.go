@@ -51,9 +51,11 @@ func main() {
 }
 
 func init() {
-	flag.Float64Var(&opts.Delay, "delay", 7500, "delay in milliseconds between screens")
+	flag.Float64Var(&opts.Delay, "delay", 4000, "delay in milliseconds each screen stays lit")
+	flag.Float64Var(&opts.BlankDelay, "blank-delay", 3000, "delay in milliseconds screens stay blanked between screens")
 	flag.BoolVar(&opts.Reset, "reset", false, "reset/clear the screen")
 	flag.BoolVar(&opts.Demo, "demo", false, "use fake data for display only")
+	flag.BoolVar(&opts.SpeedTest, "speedtest", false, "enable and display the speedtest screen")
 	flag.StringVar(&opts.Pidfile, "pidfile", "/var/run/zeromon.pid", "pidfile")
 	flag.BoolVar(&opts.Version, "version", false, "print version and exit")
 	flagutil.SetFlagsFromEnv(flag.CommandLine, "CLOUDKEY")
