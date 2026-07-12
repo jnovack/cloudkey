@@ -11,8 +11,7 @@
 // with the value from runtime/debug.ReadBuildInfo, then populates Current,
 // the snapshot the rest of the binary reads.
 //
-// internal/display's boot screen reads Version directly rather than Current,
-// since it draws during package init() — before main() has had a chance to
-// call Populate() — so it only ever sees the raw ldflags value, not the
-// debug.ReadBuildInfo fallback.
+// internal/display's boot screen reads Version directly when display.New
+// draws it. cmd/cloudkey calls Populate before display.New, so the screen
+// receives metadata resolved from ldflags or embedded VCS build info.
 package buildversion

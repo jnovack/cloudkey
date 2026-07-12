@@ -21,15 +21,21 @@ import (
 	"github.com/jnovack/cloudkey/pkg/resetbutton"
 )
 
-var opts display.CmdLineOpts
+var (
+	opts      display.CmdLineOpts
+	configErr error
+)
 
 func main() {
 	buildversion.Populate()
 
+	log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "15:04:05"}).With().Timestamp().Logger()
+	if configErr != nil {
+		log.Fatal().Err(configErr).Msg("invalid CLOUDKEY environment configuration")
+	}
+
 	// Parse CLI flags last so they override the environment values applied in init().
 	flag.Parse()
-
-	log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "15:04:05"}).With().Timestamp().Logger()
 
 	log.Info().
 		Str("version", buildversion.Current.Version).
@@ -41,7 +47,11 @@ func main() {
 		os.Exit(0)
 	}
 
-	pid, _ := pidfile.Create(opts.Pidfile)
+	pid, err := pidfile.Create(opts.Pidfile)
+	if err != nil {
+		log.Warn().Err(err).Str("pidfile", opts.Pidfile).Msg("failed to create pidfile")
+		pid = nil
+	}
 
 	if opts.ResetButtonCmd != "" {
 		go func() {
@@ -100,13 +110,17 @@ func runResetButtonCmd(cmdStr string) {
 }
 
 func init() {
-	flag.Float64Var(&opts.Delay, "delay", 5000, "delay in milliseconds each screen stays lit")
-	flag.Float64Var(&opts.BlankDelay, "blank-delay", 3000, "delay in milliseconds screens stay blanked between screens")
-	flag.BoolVar(&opts.Reset, "reset", false, "reset/clear the screen")
-	flag.BoolVar(&opts.Demo, "demo", false, "use fake data for display only")
-	flag.BoolVar(&opts.SpeedTest, "speedtest", false, "enable and display the speedtest screen")
-	flag.StringVar(&opts.Pidfile, "pidfile", "/var/run/zeromon.pid", "pidfile")
-	flag.BoolVar(&opts.Version, "version", false, "print version and exit")
-	flag.StringVar(&opts.ResetButtonCmd, "reset-button-cmd", "", "shell command to run on a single physical reset-button press (empty disables)")
-	flagutil.SetFlagsFromEnv(flag.CommandLine, "CLOUDKEY")
+	configErr = configureFlags(flag.CommandLine, &opts)
+}
+
+func configureFlags(fs *flag.FlagSet, opts *display.CmdLineOpts) error {
+	fs.Float64Var(&opts.Delay, "delay", 5000, "delay in milliseconds each screen stays lit")
+	fs.Float64Var(&opts.BlankDelay, "blank-delay", 3000, "delay in milliseconds screens stay blanked between screens")
+	fs.BoolVar(&opts.Reset, "reset", false, "reset/clear the screen")
+	fs.BoolVar(&opts.Demo, "demo", false, "use fake data for display only")
+	fs.BoolVar(&opts.SpeedTest, "speedtest", false, "enable and display the speedtest screen")
+	fs.StringVar(&opts.Pidfile, "pidfile", "/var/run/cloudkey.pid", "pidfile")
+	fs.BoolVar(&opts.Version, "version", false, "print version and exit")
+	fs.StringVar(&opts.ResetButtonCmd, "reset-button-cmd", "", "shell command to run on a single physical reset-button press (empty disables)")
+	return flagutil.SetFlagsFromEnv(fs, "CLOUDKEY")
 }
