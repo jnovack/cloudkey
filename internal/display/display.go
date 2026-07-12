@@ -1,19 +1,20 @@
 package display
 
 import (
-	"fmt"
 	"image"
 	"image/draw"
 	"math/rand"
-	"testing"
 	"time"
 
-	build "github.com/jnovack/go-version"
+	"github.com/rs/zerolog/log"
 
+	"github.com/jnovack/cloudkey/internal/buildversion"
 	"github.com/jnovack/cloudkey/internal/images"
 	"github.com/jnovack/cloudkey/pkg/framebuffer"
 	"github.com/jnovack/cloudkey/pkg/leds"
 )
+
+const fbDevice = "/dev/fb0"
 
 var screens []draw.Image
 var myLeds leds.LEDS
@@ -31,36 +32,30 @@ type CmdLineOpts struct {
 	Pidfile    string
 }
 
-func init() {
-	// Hardware bring-up (framebuffer device, boot animation, status LEDs)
-	// only makes sense outside test binaries — unit tests exercise drawing
-	// functions directly against in-memory images, never the real panel.
-	if testing.Testing() {
-		return
-	}
-
-	myLeds = leds.LEDS{}
-	myLeds.LED("blue").Off()
-	myLeds.LED("white").On()
-
-	// Framebuffer has global scope
-	// therefore err must have local scope to prevent redefining
+// openFramebuffer opens the panel device and logs its resolution. Hardware
+// bring-up lives here (called from New()) rather than in a package init(),
+// which Go always runs before main() starts — that ordering used to print
+// the resolution line before main() had a chance to log its own startup
+// banner, regardless of statement order inside main().
+func openFramebuffer() error {
 	var err error
-	fb, err = framebuffer.Open("/dev/fb0")
+	fb, err = framebuffer.Open(fbDevice)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	width = fb.Bounds().Max.X
 	height = fb.Bounds().Max.Y
 
-	fmt.Printf("Resolution: %dx%d pixels\n", width, height)
-	clearScreen()
+	log.Info().Str("device", fbDevice).Int("width", width).Int("height", height).Msg("resolution")
+	return nil
+}
 
-	draw.Draw(fb, image.Rect(64, 4, 64+32, 4+32), images.Load("logo"), image.ZP, draw.Src)
-
-	center(fb, build.Version, 40, 8, "lato-regular", false)
-
+// animateBootLoader draws and fills the boot loader bar before signaling
+// ready via the status LEDs. This is purely a visual delay (no real checks
+// behind it) so it runs late in New(), after the boot screen is already
+// drawn.
+func animateBootLoader() {
 	// Outline the loader line
 	for i := 0; i < 100; i++ {
 		fb.Set(30+i, 56, colors[3])
@@ -79,12 +74,28 @@ func init() {
 	myLeds.LED("white").Off()
 }
 
-// New initializes the screens
+// New opens the framebuffer and initializes the screens. Call it after any
+// startup logging in main() — opening the framebuffer prints the panel
+// resolution, and callers generally want their own banner to appear first.
 func New(opts CmdLineOpts) {
+	if err := openFramebuffer(); err != nil {
+		panic(err)
+	}
+
 	if opts.Reset {
 		clearScreen()
 		return
 	}
+
+	myLeds = leds.LEDS{}
+	myLeds.LED("blue").Off()
+	myLeds.LED("white").On()
+
+	clearScreen()
+	draw.Draw(fb, image.Rect(64, 4, 64+32, 4+32), images.Load("logo"), image.ZP, draw.Src)
+	center(fb, buildversion.Version, 40, 8, "lato-regular", false)
+
+	animateBootLoader()
 
 	// Allocate the screens here so their count lives next to the builders below.
 	numScreens := 2

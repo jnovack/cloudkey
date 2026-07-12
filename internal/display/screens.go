@@ -9,6 +9,8 @@ import (
 	"time"
 
 	humanize "github.com/dustin/go-humanize"
+	"github.com/rs/zerolog/log"
+
 	"github.com/jnovack/cloudkey/internal/images"
 	"github.com/jnovack/cloudkey/pkg/network"
 	"github.com/jnovack/speedtest"
@@ -90,6 +92,7 @@ func buildRemote(i int, demo bool) {
 		for {
 			if !demo {
 				if w, err := network.WANIP(); err == nil {
+					log.Info().Str("wan_ip", w).Msg("found external IP address")
 					mu.Lock()
 					wan = w
 					mu.Unlock()
@@ -182,7 +185,7 @@ func buildSpeedTest(i int, demo bool) {
 			d, u := dmsg, umsg
 			mu.Unlock()
 
-			fmt.Printf("Download: %s / Upload: %s\n", d, u)
+			log.Debug().Str("download", d).Str("upload", u).Msg("speedtest complete")
 			myLeds.LED("blue").On()
 			time.Sleep(59 * time.Minute)
 		}

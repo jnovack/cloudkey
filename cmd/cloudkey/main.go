@@ -7,11 +7,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	build "github.com/jnovack/go-version"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/tabalt/pidfile"
 
 	"github.com/coreos/pkg/flagutil"
+	"github.com/jnovack/cloudkey/internal/buildversion"
 	"github.com/jnovack/cloudkey/internal/display"
 	_ "github.com/jnovack/cloudkey/internal/fonts"
 )
@@ -19,11 +21,19 @@ import (
 var opts display.CmdLineOpts
 
 func main() {
+	buildversion.Populate()
+
 	// Parse CLI flags last so they override the environment values applied in init().
 	flag.Parse()
 
+	log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "15:04:05"}).With().Timestamp().Logger()
+
 	if opts.Version {
-		fmt.Printf("cloudkey %s\n", build.Version)
+		log.Info().
+			Str("version", buildversion.Current.Version).
+			Str("build_rfc3339", buildversion.Current.BuildRFC3339).
+			Str("revision", buildversion.Current.Revision).
+			Msg("jnovack/cloudkey")
 		os.Exit(0)
 	}
 
@@ -31,7 +41,11 @@ func main() {
 
 	// Setup Service
 	// https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/
-	fmt.Println("Starting cloudkey service")
+	log.Info().
+		Str("version", buildversion.Current.Version).
+		Str("build_rfc3339", buildversion.Current.BuildRFC3339).
+		Str("revision", buildversion.Current.Revision).
+		Msg("jnovack/cloudkey starting...")
 
 	// Catch SIGINT/SIGTERM for a clean shutdown; leave other signals to default handling.
 	sigs := make(chan os.Signal, 1)
