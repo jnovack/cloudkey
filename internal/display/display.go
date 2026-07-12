@@ -92,7 +92,7 @@ func New(opts CmdLineOpts) {
 	myLeds.LED("white").On()
 
 	clearScreen()
-	draw.Draw(fb, image.Rect(64, 4, 64+32, 4+32), images.Load("logo"), image.ZP, draw.Src)
+	draw.Draw(fb, image.Rect(64, 4, 64+32, 4+32), images.Load("logo"), image.Point{}, draw.Src)
 	center(fb, buildversion.Version, 40, 8, "lato-regular", false)
 
 	animateBootLoader()
@@ -128,5 +128,5 @@ func Shutdown() {
 // Output the screen/image immediately to the framebuffer
 func Output(i int) {
 	screen := screens[i]
-	draw.Draw(fb, fb.Bounds(), screen, image.ZP, draw.Over)
+	draw.Draw(fb, fb.Bounds(), screen, image.Point{}, draw.Over)
 }

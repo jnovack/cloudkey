@@ -46,22 +46,22 @@ var fades = []color.Alpha{
 
 // clearScreen clears... the... screen
 func clearScreen() {
-	draw.Draw(fb, fb.Bounds(), image.NewUniform(color.Gray{0}), image.ZP, draw.Src)
+	draw.Draw(fb, fb.Bounds(), image.NewUniform(color.Gray{0}), image.Point{}, draw.Src)
 }
 
 // fadeStep renders target over the framebuffer at the given alpha; shared by
 // fadeOut and fadeIn.
 func fadeStep(target draw.Image, alpha color.Alpha) {
 	bg := image.NewGray(fb.Bounds())
-	draw.Draw(bg, bg.Bounds(), image.NewUniform(color.Gray{0}), image.ZP, draw.Src)
-	draw.DrawMask(bg, bg.Bounds(), target, image.ZP, image.NewUniform(alpha), image.ZP, draw.Over)
-	draw.Draw(fb, fb.Bounds(), bg, image.ZP, draw.Over)
+	draw.Draw(bg, bg.Bounds(), image.NewUniform(color.Gray{0}), image.Point{}, draw.Src)
+	draw.DrawMask(bg, bg.Bounds(), target, image.Point{}, image.NewUniform(alpha), image.Point{}, draw.Over)
+	draw.Draw(fb, fb.Bounds(), bg, image.Point{}, draw.Over)
 }
 
 // fadeOut crossfades the framebuffer's current contents down to black.
 func fadeOut() {
 	capture := image.NewGray(fb.Bounds())
-	draw.Draw(capture, capture.Bounds(), fb, image.ZP, draw.Src)
+	draw.Draw(capture, capture.Bounds(), fb, image.Point{}, draw.Src)
 	for x := range fades {
 		fadeStep(capture, fades[x])
 		time.Sleep(8 * time.Millisecond)

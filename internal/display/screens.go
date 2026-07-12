@@ -25,25 +25,25 @@ const bytesToMebibits = 1 << 17
 // blank background each call: centered text shifts position whenever its
 // width changes, so a partial redraw would leave stale glyphs behind.
 func drawLocal(screen draw.Image, hostname, lan string) {
-	draw.Draw(screen, screen.Bounds(), image.Black, image.ZP, draw.Src)
-	center(screen, hostname, 8, 14, "lato-regular", true)
-	center(screen, lan, 34, 13, "lato-regular", false)
+	draw.Draw(screen, screen.Bounds(), image.Black, image.Point{}, draw.Src)
+	center(screen, hostname, 8, 16, "lato-regular", true)
+	center(screen, lan, 34, 15, "lato-regular", false)
 }
 
 // drawRemote renders the date/time + WAN-IP layout onto screen, large and
 // centered.
 func drawRemote(screen draw.Image, now time.Time, wan string) {
-	draw.Draw(screen, screen.Bounds(), image.Black, image.ZP, draw.Src)
-	center(screen, now.Format("2006-01-02 15:04"), 8, 13, "lato-regular", true)
-	center(screen, wan, 34, 13, "lato-regular", false)
+	draw.Draw(screen, screen.Bounds(), image.Black, image.Point{}, draw.Src)
+	center(screen, now.Format("2006-01-02 15:04"), 8, 15, "lato-regular", true)
+	center(screen, wan, 34, 15, "lato-regular", false)
 }
 
 // drawSpeedTest renders the speedtest layout (icons + stats) onto screen.
 func drawSpeedTest(screen draw.Image, dmsg, umsg, tmsg string) {
-	draw.Draw(screen, screen.Bounds(), image.Black, image.ZP, draw.Src)
-	draw.Draw(screen, image.Rect(2, 2, 2+16, 2+16), images.Load("download"), image.ZP, draw.Src)
-	draw.Draw(screen, image.Rect(2, 22, 2+16, 22+16), images.Load("upload"), image.ZP, draw.Src)
-	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("clock"), image.ZP, draw.Src)
+	draw.Draw(screen, screen.Bounds(), image.Black, image.Point{}, draw.Src)
+	draw.Draw(screen, image.Rect(2, 2, 2+16, 2+16), images.Load("download"), image.Point{}, draw.Src)
+	draw.Draw(screen, image.Rect(2, 22, 2+16, 22+16), images.Load("upload"), image.Point{}, draw.Src)
+	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("clock"), image.Point{}, draw.Src)
 	write(screen, dmsg, 22, 1, 12, "lato-regular", false)
 	write(screen, umsg, 22, 21, 12, "lato-regular", false)
 	write(screen, tmsg, 22, 41, 12, "lato-regular", false)

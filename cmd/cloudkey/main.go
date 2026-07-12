@@ -28,12 +28,13 @@ func main() {
 
 	log.Logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "15:04:05"}).With().Timestamp().Logger()
 
+	log.Info().
+		Str("version", buildversion.Current.Version).
+		Str("build_rfc3339", buildversion.Current.BuildRFC3339).
+		Str("revision", buildversion.Current.Revision).
+		Msg("jnovack/cloudkey")
+
 	if opts.Version {
-		log.Info().
-			Str("version", buildversion.Current.Version).
-			Str("build_rfc3339", buildversion.Current.BuildRFC3339).
-			Str("revision", buildversion.Current.Revision).
-			Msg("jnovack/cloudkey")
 		os.Exit(0)
 	}
 
@@ -41,11 +42,6 @@ func main() {
 
 	// Setup Service
 	// https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/
-	log.Info().
-		Str("version", buildversion.Current.Version).
-		Str("build_rfc3339", buildversion.Current.BuildRFC3339).
-		Str("revision", buildversion.Current.Revision).
-		Msg("jnovack/cloudkey starting...")
 
 	// Catch SIGINT/SIGTERM for a clean shutdown; leave other signals to default handling.
 	sigs := make(chan os.Signal, 1)
