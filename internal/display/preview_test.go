@@ -49,6 +49,19 @@ func TestPreviewScreens(t *testing.T) {
 		{"system", func(s draw.Image) {
 			drawSystem(s, "56%", "34%", storageDisplay{gb: "45GB", percent: "34%"})
 		}},
+		{"autossh-one-tunnel", func(s draw.Image) {
+			drawAutoSSH(s, []tunnelStatus{{name: "primary", up: true}})
+		}},
+		{"autossh-two-tunnels", func(s draw.Image) {
+			drawAutoSSH(s, []tunnelStatus{
+				{name: "primary", up: true},
+				{name: "backup", up: false},
+			})
+		}},
+		{"wireguard-connected", func(s draw.Image) { drawVPNStatus(s, "WireGuard", true) }},
+		{"wireguard-disconnected", func(s draw.Image) { drawVPNStatus(s, "WireGuard", false) }},
+		{"tailscale-connected", func(s draw.Image) { drawVPNStatus(s, "TailScale", true) }},
+		{"tailscale-disconnected", func(s draw.Image) { drawVPNStatus(s, "TailScale", false) }},
 	}
 	for _, c := range cases {
 		img := image.NewRGBA(image.Rect(0, 0, w, h))

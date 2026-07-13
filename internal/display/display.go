@@ -33,14 +33,24 @@ var width, height int
 
 // CmdLineOpts structure for the command line options
 type CmdLineOpts struct {
-	Delay          float64
-	BlankDelay     float64
-	Reset          bool
-	Demo           bool
-	SpeedTest      bool
-	Version        bool
-	Pidfile        string
-	ResetButtonCmd string
+	Delay                 float64
+	BlankDelay            float64
+	Reset                 bool
+	Demo                  bool
+	SpeedTest             bool
+	Version               bool
+	Pidfile               string
+	ResetButtonCmd        string
+	AutoSSHTunnel1Name    string
+	AutoSSHTunnel1Service string
+	AutoSSHTunnel2Name    string
+	AutoSSHTunnel2Service string
+	WireGuardName         string
+	WireGuardIface        string
+	WireGuardCmd          string
+	Tailscale             bool
+	TailscaleName         string
+	TailscaleCmd          string
 }
 
 // screenBuilder describes one screen in the carousel: a name for logging, a
@@ -50,7 +60,7 @@ type CmdLineOpts struct {
 type screenBuilder struct {
 	name    string
 	enabled func(CmdLineOpts) bool
-	build   func(demo bool) draw.Image
+	build   func(CmdLineOpts) draw.Image
 }
 
 // registry lists every known screen, in rotation order. A screen adds itself
@@ -58,7 +68,7 @@ type screenBuilder struct {
 // needs to change as screens are added or removed.
 var registry []screenBuilder
 
-func registerScreen(name string, enabled func(CmdLineOpts) bool, build func(bool) draw.Image) {
+func registerScreen(name string, enabled func(CmdLineOpts) bool, build func(CmdLineOpts) draw.Image) {
 	registry = append(registry, screenBuilder{name: name, enabled: enabled, build: build})
 }
 
@@ -138,7 +148,7 @@ func New(opts CmdLineOpts) {
 			continue
 		}
 		log.Info().Str("screen", sb.name).Msg("building screen")
-		screens = append(screens, sb.build(opts.Demo))
+		screens = append(screens, sb.build(opts))
 	}
 
 	// Start the carousel!

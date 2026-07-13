@@ -16,6 +16,9 @@ import (
 	"github.com/jnovack/cloudkey/pkg/memory"
 	"github.com/jnovack/cloudkey/pkg/network"
 	"github.com/jnovack/cloudkey/pkg/storage"
+	"github.com/jnovack/cloudkey/pkg/systemd"
+	"github.com/jnovack/cloudkey/pkg/tailscale"
+	"github.com/jnovack/cloudkey/pkg/wireguard"
 	"github.com/jnovack/speedtest"
 )
 
@@ -141,17 +144,18 @@ func drawStorage(screen draw.Image, sd, vol storageDisplay) {
 }
 
 // buildStorage allocates the removable-media screen and, unless demo, starts
-// the goroutine that keeps it up to date. It satisfies the func(bool)
-// draw.Image contract registerScreen expects (see init() below).
+// the goroutine that keeps it up to date. It satisfies the
+// func(CmdLineOpts) draw.Image contract registerScreen expects (see init()
+// below).
 //
 // Used space changes slowly, so a 5-minute poll is plenty. One goroutine
 // owns both stat calls, so there's no shared state and no data lock beyond
 // screenMu, which the fade carousel needs for its concurrent reads
 // (functions.go's fadeStep).
-func buildStorage(demo bool) draw.Image {
+func buildStorage(opts CmdLineOpts) draw.Image {
 	screen := image.NewRGBA(fb.Bounds())
 
-	if demo {
+	if opts.Demo {
 		sd := storageDisplay{gb: "23.4GB", percent: "45%"}
 		vol := storageDisplay{gb: "897GB", percent: "92%", warn: true}
 		drawStorage(screen, sd, vol)
@@ -215,17 +219,18 @@ func statSystem() (cpuText, memText string, disk storageDisplay) {
 
 // buildSystem allocates the CPU/memory/local-disk screen and, unless demo,
 // starts the goroutine that keeps it up to date. It satisfies the
-// func(bool) draw.Image contract registerScreen expects (see init() below).
+// func(CmdLineOpts) draw.Image contract registerScreen expects (see init()
+// below).
 //
 // cpu.Percent blocks for cpuSampleWindow to take its measurement, which
 // doubles as this loop's refresh cadence — no separate sleep needed. One
 // goroutine owns every stat call, so there's no shared state and no data
 // lock beyond screenMu, which the fade carousel needs for its concurrent
 // reads (functions.go's fadeStep).
-func buildSystem(demo bool) draw.Image {
+func buildSystem(opts CmdLineOpts) draw.Image {
 	screen := image.NewRGBA(fb.Bounds())
 
-	if demo {
+	if opts.Demo {
 		drawSystem(screen, "56%", "34%", storageDisplay{gb: "45GB", percent: "34%"})
 		return screen
 	}
@@ -246,15 +251,15 @@ func buildSystem(demo bool) draw.Image {
 }
 
 // buildHost allocates the hostname + date/time screen and starts the single
-// goroutine that keeps it up to date. It satisfies the func(bool) draw.Image
-// contract registerScreen expects (see init() below).
+// goroutine that keeps it up to date. It satisfies the func(CmdLineOpts)
+// draw.Image contract registerScreen expects (see init() below).
 //
 // One goroutine owns everything here, so there is no shared state and no data
 // lock. Its drawHost call still races the fade carousel's reads of this image
 // (functions.go's fadeStep), so that call is held under screenMu. The initial
 // draw runs before the image is reachable from any other goroutine, so it
 // needs no lock.
-func buildHost(demo bool) draw.Image {
+func buildHost(opts CmdLineOpts) draw.Image {
 	screen := image.NewRGBA(fb.Bounds())
 	hostname := "cloudkey-gen2.local"
 
@@ -265,7 +270,7 @@ func buildHost(demo bool) draw.Image {
 	// on its own slower loop — one goroutine, nothing shared to guard.
 	go func() {
 		for {
-			if !demo {
+			if !opts.Demo {
 				hostname, _ = os.Hostname()
 			}
 			screenMu.Lock()
@@ -279,8 +284,9 @@ func buildHost(demo bool) draw.Image {
 }
 
 // buildNetwork allocates the LAN + WAN address screen and, unless demo, starts
-// the single goroutine that refreshes both. It satisfies the func(bool)
-// draw.Image contract registerScreen expects (see init() below).
+// the single goroutine that refreshes both. It satisfies the
+// func(CmdLineOpts) draw.Image contract registerScreen expects (see init()
+// below).
 //
 // Both addresses change slowly — LAN rarely, WAN only via a network round-trip
 // — so one hourly goroutine refreshes them together. A single owner means no
@@ -289,12 +295,12 @@ func buildHost(demo bool) draw.Image {
 // fadeStep). The LAN address is resolved synchronously for the first frame (a
 // cheap local lookup); the WAN address shows "checking..." until the first
 // round-trip returns, rather than a placeholder that looks like a real address.
-func buildNetwork(demo bool) draw.Image {
+func buildNetwork(opts CmdLineOpts) draw.Image {
 	screen := image.NewRGBA(fb.Bounds())
 	lan := "checking..."
 	wan := "checking..."
 
-	if demo {
+	if opts.Demo {
 		lan = "192.168.10.111"
 		wan = "203.0.113.32"
 		drawNetwork(screen, lan, wan)
@@ -326,8 +332,8 @@ func buildNetwork(demo bool) draw.Image {
 }
 
 // buildSpeedTest allocates the speedtest screen and, unless demo, starts the
-// goroutines that keep it up to date. It satisfies the func(bool) draw.Image
-// contract registerScreen expects (see init() below).
+// goroutines that keep it up to date. It satisfies the func(CmdLineOpts)
+// draw.Image contract registerScreen expects (see init() below).
 //
 // The 10-second loop below redraws the screen on every tick (to keep the
 // "N minutes ago" timestamp current even between speed tests), so its call
@@ -335,7 +341,7 @@ func buildNetwork(demo bool) draw.Image {
 // reads (functions.go's fadeStep). The hourly loop only ever writes dmsg/umsg
 // behind mu — it never touches the screen image directly, so it needs no
 // screenMu.
-func buildSpeedTest(demo bool) draw.Image {
+func buildSpeedTest(opts CmdLineOpts) draw.Image {
 	dmsg := "calculating..."
 	umsg := "calculating..."
 	tmsg := "in progress"
@@ -350,7 +356,7 @@ func buildSpeedTest(demo bool) draw.Image {
 
 	screen := image.NewRGBA(fb.Bounds())
 
-	if demo {
+	if opts.Demo {
 		dmsg = "86.1 Mb/s"
 		umsg = "43.9 Mb/s"
 		tmsg = "25 minutes ago"
@@ -419,6 +425,259 @@ func buildSpeedTest(demo bool) draw.Image {
 	return screen
 }
 
+// statusPollInterval is how often the autossh/wireguard/tailscale screens
+// re-check their connection status. All three checks are local shell-outs
+// (systemctl, wg, tailscale) rather than network round-trips, so this can
+// be much shorter than the network/storage screens' polls without
+// meaningful cost.
+const statusPollInterval = 15 * time.Second
+
+// iconTextRow is one icon+label row for a block of rows drawn by
+// drawIconRows.
+type iconTextRow struct {
+	icon string
+	text string
+	bold bool
+}
+
+// drawIconRows draws a block of icon+text rows top-to-bottom starting at
+// startY, each rowHeight apart. All rows share one left edge, chosen so the
+// widest row is horizontally centered on screen — so icons stay aligned to a
+// single column regardless of how the row texts differ in length, rather
+// than each row re-centering independently and shifting its icon sideways.
+func drawIconRows(screen draw.Image, rows []iconTextRow, startY, rowHeight int, size float64, fontname string) {
+	const iconSize = 16
+	const gap = 4
+
+	maxWidth := 0
+	for _, r := range rows {
+		w, ok := textWidth(r.text, size, fontname)
+		if !ok {
+			continue
+		}
+		if total := iconSize + gap + w; total > maxWidth {
+			maxWidth = total
+		}
+	}
+	x := screen.Bounds().Max.X/2 - maxWidth/2
+
+	y := startY
+	for _, r := range rows {
+		draw.Draw(screen, image.Rect(x, y, x+iconSize, y+iconSize), images.Load(r.icon), image.Point{}, draw.Src)
+		write(screen, r.text, x+iconSize+gap, y-3, size, fontname, r.bold)
+		y += rowHeight
+	}
+}
+
+// tunnelStatus is one row of the autossh screen: a tunnel's label and
+// whether its systemd unit is currently active.
+type tunnelStatus struct {
+	name string
+	up   bool
+}
+
+// statAutoSSH checks every configured tunnel's systemd unit state.
+//
+// A tunnel is configured when its name is set; an unset service name
+// always reports down rather than checking an empty unit. is-active only
+// proves the autossh/ssh process supervisor considers itself running, not
+// that the tunnel is actually passing traffic — this is a deliberate
+// caveat, not an oversight: autossh -R forwards bind no local port to
+// probe (the forwarded port lives on the remote end), so without a -M
+// monitor port there's no more precise local signal available. Pair this
+// with `ServerAliveInterval`/`ServerAliveCountMax` in the tunnel's ssh
+// config so a genuinely dead connection makes the process exit (and the
+// unit go inactive) rather than hang open indefinitely.
+func statAutoSSH(opts CmdLineOpts) []tunnelStatus {
+	var tunnels []tunnelStatus
+	if opts.AutoSSHTunnel1Name != "" {
+		tunnels = append(tunnels, tunnelStatus{
+			name: opts.AutoSSHTunnel1Name,
+			up:   autoSSHTunnelActive(opts.AutoSSHTunnel1Service),
+		})
+	}
+	if opts.AutoSSHTunnel2Name != "" {
+		tunnels = append(tunnels, tunnelStatus{
+			name: opts.AutoSSHTunnel2Name,
+			up:   autoSSHTunnelActive(opts.AutoSSHTunnel2Service),
+		})
+	}
+	return tunnels
+}
+
+// autoSSHTunnelActive reports whether service is an active systemd unit.
+// An unconfigured (empty) service name always reports down, and a check
+// failure (e.g. the unit doesn't exist) is logged and treated as down
+// rather than propagated — a redraw loop has nowhere to surface an error.
+func autoSSHTunnelActive(service string) bool {
+	if service == "" {
+		return false
+	}
+	up, err := systemd.IsActive(service)
+	if err != nil {
+		log.Warn().Err(err).Str("service", service).Msg("autossh tunnel status check failed")
+	}
+	return up
+}
+
+// drawAutoSSH renders the autossh layout onto screen: a bold centered
+// title, then one aligned icon+label row per tunnel (one or two — see
+// statAutoSSH).
+func drawAutoSSH(screen draw.Image, tunnels []tunnelStatus) {
+	draw.Draw(screen, screen.Bounds(), image.Black, image.Point{}, draw.Src)
+	center(screen, "autossh", 4, 16, "lato-regular", true)
+
+	rows := make([]iconTextRow, len(tunnels))
+	for i, t := range tunnels {
+		icon := "noEntry"
+		if t.up {
+			icon = "check"
+		}
+		rows[i] = iconTextRow{icon: icon, text: t.name}
+	}
+
+	switch len(rows) {
+	case 1:
+		drawIconRows(screen, rows, 38, 0, 16, "lato-regular")
+	case 2:
+		drawIconRows(screen, rows, 26, 20, 16, "lato-regular")
+	}
+}
+
+// buildAutoSSH allocates the autossh tunnel-status screen and, unless demo,
+// starts the goroutine that keeps it up to date. It satisfies the
+// func(CmdLineOpts) draw.Image contract registerScreen expects (see init()
+// below).
+//
+// One goroutine owns every check, so there's no shared state and no data
+// lock beyond screenMu, which the fade carousel needs for its concurrent
+// reads (functions.go's fadeStep).
+func buildAutoSSH(opts CmdLineOpts) draw.Image {
+	screen := image.NewRGBA(fb.Bounds())
+
+	if opts.Demo {
+		drawAutoSSH(screen, []tunnelStatus{
+			{name: "tunnel1", up: true},
+			{name: "tunnel2", up: false},
+		})
+		return screen
+	}
+
+	tunnels := statAutoSSH(opts)
+	drawAutoSSH(screen, tunnels)
+
+	go func() {
+		for {
+			time.Sleep(statusPollInterval)
+			tunnels := statAutoSSH(opts)
+			screenMu.Lock()
+			drawAutoSSH(screen, tunnels)
+			screenMu.Unlock()
+		}
+	}()
+
+	return screen
+}
+
+// vpnTitleSize is the larger title size the wireguard/tailscale screens use
+// (the mockup's "[large]" title), bigger than autossh's plain 16px title.
+const vpnTitleSize = 20
+
+// drawVPNStatus renders a single connected/disconnected VPN screen: a large
+// bold centered title (the VPN's display name) and one icon+status row
+// below it. It's shared by wireguard and tailscale, which differ only in
+// title text and how up is determined.
+func drawVPNStatus(screen draw.Image, name string, up bool) {
+	draw.Draw(screen, screen.Bounds(), image.Black, image.Point{}, draw.Src)
+	center(screen, name, 4, vpnTitleSize, "lato-regular", true)
+
+	icon, text := "noEntry", "disconnected"
+	if up {
+		icon, text = "check", "connected"
+	}
+	drawIconRows(screen, []iconTextRow{{icon: icon, text: text, bold: up}}, 40, 0, 16, "lato-regular")
+}
+
+// buildWireGuard allocates the WireGuard connection-status screen and,
+// unless demo, starts the goroutine that keeps it up to date. It satisfies
+// the func(CmdLineOpts) draw.Image contract registerScreen expects (see
+// init() below).
+//
+// wireguard.Connected reads kernel WireGuard state via `wg show` rather
+// than blocking on the network, so a short poll is cheap. One goroutine
+// owns the check, so there's no shared state and no data lock beyond
+// screenMu, which the fade carousel needs for its concurrent reads
+// (functions.go's fadeStep).
+func buildWireGuard(opts CmdLineOpts) draw.Image {
+	screen := image.NewRGBA(fb.Bounds())
+
+	if opts.Demo {
+		drawVPNStatus(screen, opts.WireGuardName, true)
+		return screen
+	}
+
+	up, err := wireguard.Connected(opts.WireGuardCmd, opts.WireGuardIface)
+	if err != nil {
+		log.Warn().Err(err).Str("iface", opts.WireGuardIface).Msg("wireguard status check failed")
+	}
+	drawVPNStatus(screen, opts.WireGuardName, up)
+
+	go func() {
+		for {
+			time.Sleep(statusPollInterval)
+			up, err := wireguard.Connected(opts.WireGuardCmd, opts.WireGuardIface)
+			if err != nil {
+				log.Warn().Err(err).Str("iface", opts.WireGuardIface).Msg("wireguard status check failed")
+			}
+			screenMu.Lock()
+			drawVPNStatus(screen, opts.WireGuardName, up)
+			screenMu.Unlock()
+		}
+	}()
+
+	return screen
+}
+
+// buildTailscale allocates the Tailscale connection-status screen and,
+// unless demo, starts the goroutine that keeps it up to date. It satisfies
+// the func(CmdLineOpts) draw.Image contract registerScreen expects (see
+// init() below).
+//
+// tailscale.Connected shells out to `tailscale status --json`, a local IPC
+// call to tailscaled rather than a network round-trip, so a short poll is
+// cheap. One goroutine owns the check, so there's no shared state and no
+// data lock beyond screenMu, which the fade carousel needs for its
+// concurrent reads (functions.go's fadeStep).
+func buildTailscale(opts CmdLineOpts) draw.Image {
+	screen := image.NewRGBA(fb.Bounds())
+
+	if opts.Demo {
+		drawVPNStatus(screen, opts.TailscaleName, true)
+		return screen
+	}
+
+	up, err := tailscale.Connected(opts.TailscaleCmd)
+	if err != nil {
+		log.Warn().Err(err).Msg("tailscale status check failed")
+	}
+	drawVPNStatus(screen, opts.TailscaleName, up)
+
+	go func() {
+		for {
+			time.Sleep(statusPollInterval)
+			up, err := tailscale.Connected(opts.TailscaleCmd)
+			if err != nil {
+				log.Warn().Err(err).Msg("tailscale status check failed")
+			}
+			screenMu.Lock()
+			drawVPNStatus(screen, opts.TailscaleName, up)
+			screenMu.Unlock()
+		}
+	}()
+
+	return screen
+}
+
 // init registers every screen in this file with the carousel. registerScreen
 // (display.go) just appends to the package-level registry; New() builds
 // whatever's in it, in this order, when the CLI options say it's enabled.
@@ -429,7 +688,7 @@ func buildSpeedTest(demo bool) draw.Image {
 //     goroutines. It always redraws from a blank background (see drawHost's
 //     doc comment for why partial redraws are unsafe here). Model it on
 //     drawHost/drawNetwork/drawSpeedTest above.
-//  2. Write buildX(demo bool) draw.Image — allocates the screen with
+//  2. Write buildX(opts CmdLineOpts) draw.Image — allocates the screen with
 //     image.NewRGBA(fb.Bounds()), draws the first frame synchronously (no
 //     lock needed yet — nothing else can see the image), starts whatever
 //     goroutine(s) keep redrawing it on a schedule, and returns the image.
@@ -449,4 +708,7 @@ func init() {
 	registerScreen("storage", alwaysEnabled, buildStorage)
 	registerScreen("system", alwaysEnabled, buildSystem)
 	registerScreen("speedtest", func(o CmdLineOpts) bool { return o.SpeedTest }, buildSpeedTest)
+	registerScreen("autossh", func(o CmdLineOpts) bool { return o.AutoSSHTunnel1Name != "" }, buildAutoSSH)
+	registerScreen("wireguard", func(o CmdLineOpts) bool { return o.WireGuardIface != "" }, buildWireGuard)
+	registerScreen("tailscale", func(o CmdLineOpts) bool { return o.Tailscale }, buildTailscale)
 }

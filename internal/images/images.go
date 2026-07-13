@@ -28,6 +28,7 @@ func init() {
 
 	// Image data is compiled in as Go constant strings (see data.go).
 	// Register each asset name here so Load can find it by name.
+	assets["check"] = check
 	assets["clock"] = clock
 	assets["dockerOff"] = dockerOff
 	assets["dockerOn"] = dockerOn
@@ -41,6 +42,7 @@ func init() {
 	assets["logo"] = logo
 	assets["memory"] = memory
 	assets["network"] = network
+	assets["noEntry"] = noEntry
 	assets["sdcard"] = sdcard
 	assets["upload"] = upload
 	assets["uploadIdle"] = uploadIdle

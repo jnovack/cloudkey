@@ -148,24 +148,32 @@ func write(screen draw.Image, text string, x, y int, size float64, fontname stri
 	}
 }
 
-// center horizontally centers text on the given screen at vertical position y.
-func center(screen draw.Image, text string, y int, size float64, fontname string, bold bool) {
-	font := fonts.Load(fontname)
-
-	// Measure the rendered width of the text so it can be horizontally centered.
+// textWidth measures the rendered pixel width of text at size in fontname,
+// so callers can position it (e.g. horizontally centering it, or aligning a
+// block of multiple lines to a shared left edge). ok is false if any rune in
+// text has no glyph in the font, matching truetype.Face.GlyphAdvance.
+func textWidth(text string, size float64, fontname string) (width int, ok bool) {
 	opts := truetype.Options{}
 	opts.DPI = 72
 	opts.Size = size + 1
-	face := truetype.NewFace(font, &opts)
+	face := truetype.NewFace(fonts.Load(fontname), &opts)
 
-	var widths int
 	for _, t := range text {
 		awidth, ok := face.GlyphAdvance(rune(t))
 		if !ok {
-			return
+			return 0, false
 		}
-		widths += int(float64(awidth) / 64)
+		width += int(float64(awidth) / 64)
+	}
+	return width, true
+}
+
+// center horizontally centers text on the given screen at vertical position y.
+func center(screen draw.Image, text string, y int, size float64, fontname string, bold bool) {
+	width, ok := textWidth(text, size, fontname)
+	if !ok {
+		return
 	}
 	shift := pixelShift(time.Now())
-	write(screen, text, screen.Bounds().Max.X/2-widths/2+shift.X, y+shift.Y, size, fontname, bold)
+	write(screen, text, screen.Bounds().Max.X/2-width/2+shift.X, y+shift.Y, size, fontname, bold)
 }
