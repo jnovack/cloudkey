@@ -58,6 +58,12 @@ func TestPreviewScreens(t *testing.T) {
 				{name: "backup", up: false},
 			})
 		}},
+		{"autossh-two-tunnels-descenders", func(s draw.Image) {
+			drawAutoSSH(s, []tunnelStatus{
+				{name: "gigabyte", up: true},
+				{name: "jumpgap", up: false},
+			})
+		}},
 		{"wireguard-connected", func(s draw.Image) { drawVPNStatus(s, "WireGuard", true) }},
 		{"wireguard-disconnected", func(s draw.Image) { drawVPNStatus(s, "WireGuard", false) }},
 		{"tailscale-connected", func(s draw.Image) { drawVPNStatus(s, "TailScale", true) }},

@@ -540,7 +540,7 @@ func drawAutoSSH(screen draw.Image, tunnels []tunnelStatus) {
 	case 1:
 		drawIconRows(screen, rows, 38, 0, 16, "lato-regular")
 	case 2:
-		drawIconRows(screen, rows, 26, 20, 16, "lato-regular")
+		drawIconRows(screen, rows, 24, 19, 16, "lato-regular")
 	}
 }
 

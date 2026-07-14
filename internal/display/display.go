@@ -155,10 +155,13 @@ func New(opts CmdLineOpts) {
 	startFadeCarousel(opts.Delay, opts.BlankDelay)
 }
 
-// Shutdown the LEDs
+// Shutdown turns off the "running" blue LED and leaves white lit, so the
+// panel still shows the box is powered even though the cloudkey service
+// itself has stopped — a fully dark panel is indistinguishable from the
+// device being off.
 func Shutdown() {
 	myLeds.LED("blue").Off()
-	myLeds.LED("white").Off()
+	myLeds.LED("white").On()
 }
 
 // BlinkResetAck acknowledges a physical reset-button press by swapping the
