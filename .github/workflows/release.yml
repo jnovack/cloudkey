@@ -1,0 +1,89 @@
+name: Release Binaries
+# Builds the linux/arm binary (the only target Cloud Key hardware runs) and
+# attaches it to the GitHub release created by the semver tag.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  validate_tag:
+    runs-on: ubuntu-latest
+    outputs:
+      is_valid: ${{ steps.check.outputs.is_valid }}
+    steps:
+      - id: check
+        name: Validate full semver tag
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "is_valid=true" >> "${GITHUB_OUTPUT}"
+          elif [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-((alpha|beta|pre|rc)([.-][0-9A-Za-z]+)*))?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "is_valid=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "is_valid=false" >> "${GITHUB_OUTPUT}"
+            echo "Tag ${GITHUB_REF_NAME} is not a full semver tag like v1.3.0"
+          fi
+
+  create_release:
+    runs-on: ubuntu-latest
+    needs: validate_tag
+    if: needs.validate_tag.outputs.is_valid == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            echo "Release ${{ github.ref_name }} already exists, skipping creation"
+            exit 0
+          fi
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          NOTES=$(git log "${PREV}..HEAD" --no-merges --pretty=format:"* %s (%h)")
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --notes "${NOTES}" \
+            --verify-tag
+
+  build:
+    name: build linux/arm
+    runs-on: ubuntu-latest
+    needs: create_release
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: arm
+        run: |
+          go build \
+            -ldflags "-s -w \
+              -X github.com/jnovack/cloudkey/internal/buildversion.Version=${{ github.ref_name }} \
+              -X github.com/jnovack/cloudkey/internal/buildversion.Revision=${{ github.sha }} \
+              -X github.com/jnovack/cloudkey/internal/buildversion.BuildRFC3339=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            -o cloudkey-linux-arm \
+            ./cmd/cloudkey
+
+      - name: Upload binary to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.ref_name }}" cloudkey-linux-arm
