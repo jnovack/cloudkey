@@ -25,7 +25,7 @@ func TestPreviewScreens(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const w, h = 160, 64 // matches the panel resolution assumed elsewhere (speedtest's hardcoded redraw rect)
+	const w, h = 160, 64 // matches the panel resolution the draw funcs' hardcoded rects assume
 
 	cases := []struct {
 		name string
@@ -33,7 +33,6 @@ func TestPreviewScreens(t *testing.T) {
 	}{
 		{"host", func(s draw.Image) { drawHost(s, "cloudkey-gen2.local", time.Date(2026, 7, 11, 14, 32, 0, 0, time.UTC)) }},
 		{"network", func(s draw.Image) { drawNetwork(s, "192.168.10.111", "203.0.113.32") }},
-		{"speedtest", func(s draw.Image) { drawSpeedTest(s, "86.10 Mb", "43.90 Mb", "25 minutes ago") }},
 		{"storage", func(s draw.Image) {
 			drawStorage(s,
 				storageDisplay{gb: "23.4GB", percent: "45%"},

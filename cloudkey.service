@@ -1,15 +1,46 @@
 [Unit]
 Description=CloudKey UI
 After=network.target
+# StartLimit* must live in [Unit], not [Service] — systemd >= 229 parses them
+# only here. In [Service] they are silently ignored, which leaves Restart=
+# below with no burst cap and lets a crash-looping binary restart forever.
+StartLimitIntervalSec=30
+StartLimitBurst=3
 
 [Service]
 ExecStart=/usr/local/bin/cloudkey
 EnvironmentFile=/etc/cloudkey.env
-Type=Simple
+# Type= values are case-sensitive; keep this lowercase so systemd accepts the
+# unit exactly as written instead of warning and falling back to defaults.
+Type=simple
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=30
-StartLimitBurst=3
+
+# Defense-in-depth: cloudkey needs root (or cap_net_bind_service) for the
+# framebuffer/LED/GPIO devices and optionally port 80, and forks
+# wg/tailscale/systemctl/the reset-button command, so it cannot be fully
+# unprivileged or device-isolated (PrivateDevices=true would break OLED/LED/
+# button access, and ProtectSystem=strict/DynamicUser would break running as
+# a fixed root identity with device access). These directives narrow the
+# blast radius of a future bug in the network-facing dashboard/SSE path
+# without touching device access or subprocess execution:
+NoNewPrivileges=true
+ProtectHome=true
+# ProtectKernelTunables is deliberately OMITTED: it remounts /sys read-only,
+# which would break LED status signaling — pkg/leds writes the sysfs led-class
+# attributes under /sys/class/leds/<name> (brightness, trigger, delay_on/off).
+# Those writes are best-effort (logged at debug, non-fatal), so the daemon
+# would keep running but the LEDs would silently stop working. Do not re-add
+# this line without moving LED control off sysfs first.
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+ReadWritePaths=/var/run /run
 
 [Install]
 WantedBy=multi-user.target

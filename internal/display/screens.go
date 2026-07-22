@@ -5,26 +5,22 @@ import (
 	"image"
 	"image/draw"
 	"os"
-	"sync"
 	"time"
 
-	humanize "github.com/dustin/go-humanize"
 	"github.com/rs/zerolog/log"
 
 	"github.com/jnovack/cloudkey/internal/images"
+	"github.com/jnovack/cloudkey/internal/state"
 	"github.com/jnovack/cloudkey/pkg/cpu"
+	"github.com/jnovack/cloudkey/pkg/host"
 	"github.com/jnovack/cloudkey/pkg/memory"
 	"github.com/jnovack/cloudkey/pkg/network"
+	"github.com/jnovack/cloudkey/pkg/ping"
 	"github.com/jnovack/cloudkey/pkg/storage"
 	"github.com/jnovack/cloudkey/pkg/systemd"
 	"github.com/jnovack/cloudkey/pkg/tailscale"
 	"github.com/jnovack/cloudkey/pkg/wireguard"
-	"github.com/jnovack/speedtest"
 )
-
-// speedtest reports transfer rates in bytes/sec. Dividing by 2^17 (131072)
-// converts bytes/sec to mebibits/sec (Mb): bytes * 8 bits / 2^20.
-const bytesToMebibits = 1 << 17
 
 // storageWarnThreshold is the percent-used a mount must exceed before
 // drawStorageRow draws its warning icon.
@@ -64,22 +60,25 @@ type storageDisplay struct {
 	notMounted bool
 }
 
-// statStorage stats path and formats the result for display. storage.Stat
-// can fail two distinct ways, both handled without panicking: path exists
-// but nothing is mounted there (storage.ErrNotMounted, e.g. no SD card
-// inserted) shows "not mounted"; any other error (e.g. the mount-point
-// directory itself doesn't exist) falls back to the same "not mounted"
-// display rather than crashing the screen or showing a stale/zeroed reading.
-func statStorage(path string) storageDisplay {
+// diskFor stats path once and returns both the OLED display state and the raw
+// hub disk slice, so a screen goroutine feeds the panel and the web dashboard
+// from a single storage.Stat call. storage.Stat can fail two distinct ways,
+// both handled without panicking: path exists but nothing is mounted there
+// (storage.ErrNotMounted, e.g. no SD card inserted), or any other error (e.g.
+// the mount-point directory itself doesn't exist) — both render "not mounted"
+// on the panel and Mounted:false to the web, rather than crashing the screen or
+// showing a stale/zeroed reading.
+func diskFor(path string) (storageDisplay, state.Disk) {
 	u, err := storage.Stat(path)
 	if err != nil {
-		return storageDisplay{notMounted: true}
+		return storageDisplay{notMounted: true}, state.Disk{Mounted: false}
 	}
-	return storageDisplay{
+	d := storageDisplay{
 		gb:      formatGB(u.UsedBytes),
 		percent: formatPercent(u.Percent),
 		warn:    u.Percent > storageWarnThreshold,
 	}
+	return d, state.Disk{Mounted: true, Used: u.UsedBytes, Total: u.TotalBytes}
 }
 
 // drawHost renders the hostname + date/time layout onto screen, large and
@@ -94,7 +93,7 @@ func drawHost(screen draw.Image, hostname string, now time.Time) {
 
 // drawNetwork renders the LAN and WAN addresses onto screen, each tagged with
 // an icon — a computer for the LAN address, a globe for the WAN address — so
-// the two bare IPs are told apart at a glance. It follows drawSpeedTest's
+// the two bare IPs are told apart at a glance. It follows drawStorageRow's
 // icon-plus-text row layout rather than the centered text of drawHost.
 func drawNetwork(screen draw.Image, lan, wan string) {
 	draw.Draw(screen, screen.Bounds(), image.Black, image.Point{}, draw.Src)
@@ -102,17 +101,6 @@ func drawNetwork(screen draw.Image, lan, wan string) {
 	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("internet"), image.Point{}, draw.Src)
 	write(screen, lan, 22, 7, 16, "lato-regular", false)
 	write(screen, wan, 22, 39, 16, "lato-regular", true)
-}
-
-// drawSpeedTest renders the speedtest layout (icons + stats) onto screen.
-func drawSpeedTest(screen draw.Image, dmsg, umsg, tmsg string) {
-	draw.Draw(screen, screen.Bounds(), image.Black, image.Point{}, draw.Src)
-	draw.Draw(screen, image.Rect(2, 2, 2+16, 2+16), images.Load("download"), image.Point{}, draw.Src)
-	draw.Draw(screen, image.Rect(2, 22, 2+16, 22+16), images.Load("upload"), image.Point{}, draw.Src)
-	draw.Draw(screen, image.Rect(2, 42, 2+16, 42+16), images.Load("clock"), image.Point{}, draw.Src)
-	write(screen, dmsg, 22, 1, 12, "lato-regular", false)
-	write(screen, umsg, 22, 21, 12, "lato-regular", false)
-	write(screen, tmsg, 22, 41, 12, "lato-regular", false)
 }
 
 // drawStorageRow renders one removable-media row: an icon, its used-space
@@ -159,21 +147,29 @@ func buildStorage(opts CmdLineOpts) draw.Image {
 		sd := storageDisplay{gb: "23.4GB", percent: "45%"}
 		vol := storageDisplay{gb: "897GB", percent: "92%", warn: true}
 		drawStorage(screen, sd, vol)
+		publishDisk("sdcard", state.Disk{Mounted: true, Used: 6900000000, Total: 31900000000})
+		publishDisk("ssd", state.Disk{Mounted: true, Used: 897000000000, Total: 1000000000000})
 		return screen
 	}
 
-	sd := statStorage("/sdcard")
-	vol := statStorage("/volume")
+	// The web dashboard names these mounts "sdcard" (/sdcard) and "ssd"
+	// (/volume, the removable SSD/HDD bay), matching the panel's two rows.
+	sd, sdRaw := diskFor("/sdcard")
+	vol, volRaw := diskFor("/volume")
 	drawStorage(screen, sd, vol)
+	publishDisk("sdcard", sdRaw)
+	publishDisk("ssd", volRaw)
 
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			sd := statStorage("/sdcard")
-			vol := statStorage("/volume")
+			sd, sdRaw := diskFor("/sdcard")
+			vol, volRaw := diskFor("/volume")
 			screenMu.Lock()
 			drawStorage(screen, sd, vol)
 			screenMu.Unlock()
+			publishDisk("sdcard", sdRaw)
+			publishDisk("ssd", volRaw)
 		}
 	}()
 
@@ -202,19 +198,60 @@ func drawSystem(screen draw.Image, cpuPercent, memPercent string, disk storageDi
 // with no additional sleep.
 const cpuSampleWindow = 3 * time.Second
 
-// statSystem samples CPU, memory, and local-disk usage and formats them for
-// display. A failed CPU or memory read (e.g. unsupported OS) shows dashes
-// rather than a stale or zeroed reading, matching statStorage.
-func statSystem() (cpuText, memText string, disk storageDisplay) {
-	cpuText, memText = "--%", "--%"
+// systemStat is one reading of CPU, memory, and root-filesystem usage: the
+// strings the panel draws plus the raw figures the web dashboard needs (bytes,
+// not percentages). Gathering both from one sample avoids sampling the CPU
+// twice — cpu.Percent blocks for cpuSampleWindow, so a second call would double
+// this loop's period.
+type systemStat struct {
+	cpuText string
+	memText string
+	disk    storageDisplay
+
+	cpuPct float64
+	cpuOK  bool
+	mem    state.Mem
+	memOK  bool
+	rootfs state.Disk
+}
+
+// statSystem samples CPU, memory, and root-filesystem usage once and returns
+// both display and raw forms. A failed CPU or memory read (e.g. unsupported OS)
+// shows dashes on the panel and is omitted from the web slice, rather than
+// publishing a stale or zeroed reading.
+func statSystem() systemStat {
+	s := systemStat{cpuText: "--%", memText: "--%"}
 	if pct, err := cpu.Percent(cpuSampleWindow); err == nil {
-		cpuText = formatPercent(pct)
+		s.cpuPct, s.cpuOK = pct, true
+		s.cpuText = formatPercent(pct)
 	}
-	if pct, err := memory.Percent(); err == nil {
-		memText = formatPercent(pct)
+	if used, total, err := memory.Stats(); err == nil && total > 0 {
+		s.mem, s.memOK = state.Mem{Used: used, Total: total}, true
+		s.memText = formatPercent(float64(used) / float64(total) * 100)
 	}
-	disk = statStorage("/")
-	return cpuText, memText, disk
+	s.disk, s.rootfs = diskFor("/")
+	return s
+}
+
+// publishSystem sends one systemStat's raw figures to the hub. CPU cores and
+// load average are gathered here (cheap reads the panel doesn't need) only when
+// a hub is attached, so a display-only run does no extra work.
+func publishSystem(s systemStat) {
+	if !hubEnabled() {
+		return
+	}
+	c := state.CPU{Cores: cpu.Cores()}
+	if s.cpuOK {
+		c.Pct = s.cpuPct
+	}
+	if la, err := cpu.LoadAverage(); err == nil {
+		c.LoadAvg = la
+	}
+	publishCPU(c)
+	if s.memOK {
+		publishMem(s.mem)
+	}
+	publishDisk("rootfs", s.rootfs)
 }
 
 // buildSystem allocates the CPU/memory/local-disk screen and, unless demo,
@@ -222,32 +259,74 @@ func statSystem() (cpuText, memText string, disk storageDisplay) {
 // func(CmdLineOpts) draw.Image contract registerScreen expects (see init()
 // below).
 //
-// cpu.Percent blocks for cpuSampleWindow to take its measurement, which
-// doubles as this loop's refresh cadence — no separate sleep needed. One
-// goroutine owns every stat call, so there's no shared state and no data
-// lock beyond screenMu, which the fade carousel needs for its concurrent
-// reads (functions.go's fadeStep).
+// cpu.Percent normally blocks for cpuSampleWindow to take its measurement, and
+// that block is this loop's refresh cadence. It is not a guarantee, though: on
+// a read failure cpu.Percent returns before it ever sleeps, so systemLoopTick
+// enforces cpuSampleWindow as a floor. Without it, an unreadable /proc/stat
+// turns this into an unthrottled spin that pegs a core and saturates every SSE
+// subscriber's buffer. One goroutine owns every stat call, so there's no shared
+// state and no data lock beyond screenMu, which the fade carousel needs for its
+// concurrent reads (functions.go's fadeStep).
 func buildSystem(opts CmdLineOpts) draw.Image {
 	screen := image.NewRGBA(fb.Bounds())
 
 	if opts.Demo {
 		drawSystem(screen, "56%", "34%", storageDisplay{gb: "45GB", percent: "34%"})
+		publishCPU(state.CPU{Pct: 56, Cores: cpu.Cores(), LoadAvg: 0.62})
+		publishMem(state.Mem{Used: 2630000000, Total: 4090000000})
+		publishDisk("rootfs", state.Disk{Mounted: true, Used: 24900000000, Total: 31900000000})
 		return screen
 	}
 
-	cpuText, memText, disk := statSystem()
-	drawSystem(screen, cpuText, memText, disk)
+	s := statSystem()
+	drawSystem(screen, s.cpuText, s.memText, s.disk)
+	publishSystem(s)
 
 	go func() {
 		for {
-			cpuText, memText, disk := statSystem()
-			screenMu.Lock()
-			drawSystem(screen, cpuText, memText, disk)
-			screenMu.Unlock()
+			systemLoopTick(statSystem, func(s systemStat) {
+				screenMu.Lock()
+				drawSystem(screen, s.cpuText, s.memText, s.disk)
+				screenMu.Unlock()
+				publishSystem(s)
+			}, time.Sleep)
 		}
 	}()
 
 	return screen
+}
+
+// systemLoopTick runs one iteration of buildSystem's redraw loop: stat, then
+// redraw, then a floor sleep so a stat call that returns before cpuSampleWindow
+// elapses (e.g. cpu.Percent returning immediately on a /proc/stat read
+// failure, before it ever reaches its own internal sleep) can't spin the loop
+// unthrottled. stat, redraw, and sleep are injected so tests can exercise the
+// floor with a fake instantaneous stat and a fake sleep, instead of a real
+// failing CPU read and a real multi-second wait.
+func systemLoopTick(stat func() systemStat, redraw func(systemStat), sleep func(time.Duration)) {
+	start := time.Now()
+	s := stat()
+	redraw(s)
+	// Sleep only the remainder of the window: on the healthy path stat()
+	// already consumed it and this is a no-op.
+	if rest := cpuSampleWindow - time.Since(start); rest > 0 {
+		sleep(rest)
+	}
+}
+
+// resolveHostname runs lookup and returns its result, or prev unchanged on
+// failure. os.Hostname's error path returns "" (its zero value), and blindly
+// assigning that would blank the panel's title row and publish an empty name
+// to the web on every transient lookup failure — so the previous good value is
+// kept instead, and the failure is logged since a redraw loop has nowhere else
+// to surface it.
+func resolveHostname(prev string, lookup func() (string, error)) string {
+	h, err := lookup()
+	if err != nil {
+		log.Warn().Err(err).Msg("hostname lookup failed, keeping previous value")
+		return prev
+	}
+	return h
 }
 
 // buildHost allocates the hostname + date/time screen and starts the single
@@ -265,17 +344,28 @@ func buildHost(opts CmdLineOpts) draw.Image {
 
 	drawHost(screen, hostname, time.Now())
 
+	// OS pretty-name and architecture are static for the life of the process,
+	// so they're read once here rather than on every tick.
+	osName, arch := host.OSName(), host.Arch()
+
 	// Redraw every 30s so the displayed HH:MM stays current. os.Hostname() is
 	// a cheap local syscall, so it's re-read on the same tick rather than run
 	// on its own slower loop — one goroutine, nothing shared to guard.
 	go func() {
 		for {
 			if !opts.Demo {
-				hostname, _ = os.Hostname()
+				hostname = resolveHostname(hostname, os.Hostname)
 			}
 			screenMu.Lock()
 			drawHost(screen, hostname, time.Now())
 			screenMu.Unlock()
+
+			h := state.Host{Name: hostname, OS: osName, Arch: arch}
+			if up, err := host.Uptime(); err == nil {
+				h.UptimeSec = int64(up.Seconds())
+			}
+			publishHost(h)
+
 			time.Sleep(30 * time.Second)
 		}
 	}()
@@ -304,6 +394,7 @@ func buildNetwork(opts CmdLineOpts) draw.Image {
 		lan = "192.168.10.111"
 		wan = "203.0.113.32"
 		drawNetwork(screen, lan, wan)
+		publishNet(state.Net{LAN: lan, WAN: wan})
 		return screen
 	}
 
@@ -311,6 +402,7 @@ func buildNetwork(opts CmdLineOpts) draw.Image {
 		lan = l
 	}
 	drawNetwork(screen, lan, wan)
+	publishNet(state.Net{LAN: lan, WAN: wan})
 
 	go func() {
 		for {
@@ -324,100 +416,7 @@ func buildNetwork(opts CmdLineOpts) draw.Image {
 			screenMu.Lock()
 			drawNetwork(screen, lan, wan)
 			screenMu.Unlock()
-			time.Sleep(59 * time.Minute)
-		}
-	}()
-
-	return screen
-}
-
-// buildSpeedTest allocates the speedtest screen and, unless demo, starts the
-// goroutines that keep it up to date. It satisfies the func(CmdLineOpts)
-// draw.Image contract registerScreen expects (see init() below).
-//
-// The 10-second loop below redraws the screen on every tick (to keep the
-// "N minutes ago" timestamp current even between speed tests), so its call
-// to drawSpeedTest must hold screenMu against the fade carousel's concurrent
-// reads (functions.go's fadeStep). The hourly loop only ever writes dmsg/umsg
-// behind mu — it never touches the screen image directly, so it needs no
-// screenMu.
-func buildSpeedTest(opts CmdLineOpts) draw.Image {
-	dmsg := "calculating..."
-	umsg := "calculating..."
-	tmsg := "in progress"
-
-	download := make(chan int)
-	upload := make(chan int)
-	lastcheck := time.Now()
-
-	// mu guards dmsg, umsg, and lastcheck, which are written by the hourly
-	// speed-test goroutine and read by the 10-second refresh goroutine.
-	var mu sync.Mutex
-
-	screen := image.NewRGBA(fb.Bounds())
-
-	if opts.Demo {
-		dmsg = "86.1 Mb/s"
-		umsg = "43.9 Mb/s"
-		tmsg = "25 minutes ago"
-		drawSpeedTest(screen, dmsg, umsg, tmsg)
-		return screen
-	}
-
-	drawSpeedTest(screen, dmsg, umsg, tmsg)
-
-	client := speedtest.NewClient(&speedtest.Opts{})
-
-	// Redraw every 10s so the "N minutes ago" line stays current between the
-	// hourly tests; it only re-renders the last results, it never runs a test.
-	go func() {
-		for {
-			mu.Lock()
-			d, u, lc := dmsg, umsg, lastcheck
-			mu.Unlock()
-
-			tmsg = humanize.Time(lc)
-			screenMu.Lock()
-			drawSpeedTest(screen, d, u, tmsg)
-			screenMu.Unlock()
-			time.Sleep(10 * time.Second)
-		}
-	}()
-
-	// Run the actual speed test hourly — it saturates the link for several
-	// seconds, so it's kept infrequent and off the redraw path above. It
-	// blinks the blue LED while running and writes results back under mu.
-	go func() {
-		for {
-			myLeds.LED("blue").Blink(128, 500, 500)
-
-			server := client.SelectServer(&speedtest.Opts{})
-
-			fmt.Printf("Hosted by %s (%s) [%.2f km]: %d ms\n",
-				server.Sponsor,
-				server.Name,
-				server.Distance,
-				server.Latency/time.Millisecond)
-
-			go func() { download <- server.DownloadSpeed() }()
-			dlspeed := <-download
-			mu.Lock()
-			dmsg = fmt.Sprintf("%.2f Mb", float64(dlspeed)/bytesToMebibits)
-			mu.Unlock()
-
-			go func() { upload <- server.UploadSpeed() }()
-			ulspeed := <-upload
-			mu.Lock()
-			umsg = fmt.Sprintf("%.2f Mb", float64(ulspeed)/bytesToMebibits)
-			mu.Unlock()
-
-			mu.Lock()
-			lastcheck = time.Now()
-			d, u := dmsg, umsg
-			mu.Unlock()
-
-			log.Debug().Str("download", d).Str("upload", u).Msg("speedtest complete")
-			myLeds.LED("blue").On()
+			publishNet(state.Net{LAN: lan, WAN: wan})
 			time.Sleep(59 * time.Minute)
 		}
 	}()
@@ -469,11 +468,14 @@ func drawIconRows(screen draw.Image, rows []iconTextRow, startY, rowHeight int, 
 	}
 }
 
-// tunnelStatus is one row of the autossh screen: a tunnel's label and
-// whether its systemd unit is currently active.
+// tunnelStatus is one row of the autossh screen: a tunnel's label, the systemd
+// unit backing it, and whether that unit is currently active. The service is
+// carried so the web publisher can derive connected-time without a second
+// is-active check.
 type tunnelStatus struct {
-	name string
-	up   bool
+	name    string
+	service string
+	up      bool
 }
 
 // statAutoSSH checks every configured tunnel's systemd unit state.
@@ -492,17 +494,44 @@ func statAutoSSH(opts CmdLineOpts) []tunnelStatus {
 	var tunnels []tunnelStatus
 	if opts.AutoSSHTunnel1Name != "" {
 		tunnels = append(tunnels, tunnelStatus{
-			name: opts.AutoSSHTunnel1Name,
-			up:   autoSSHTunnelActive(opts.AutoSSHTunnel1Service),
+			name:    opts.AutoSSHTunnel1Name,
+			service: opts.AutoSSHTunnel1Service,
+			up:      autoSSHTunnelActive(opts.AutoSSHTunnel1Service),
 		})
 	}
 	if opts.AutoSSHTunnel2Name != "" {
 		tunnels = append(tunnels, tunnelStatus{
-			name: opts.AutoSSHTunnel2Name,
-			up:   autoSSHTunnelActive(opts.AutoSSHTunnel2Service),
+			name:    opts.AutoSSHTunnel2Name,
+			service: opts.AutoSSHTunnel2Service,
+			up:      autoSSHTunnelActive(opts.AutoSSHTunnel2Service),
 		})
 	}
 	return tunnels
+}
+
+// publishAutoSSH sends each autossh tunnel's state to the hub, reusing the
+// is-active result the panel already computed. For an up tunnel it derives
+// connected-time from the unit's ActiveEnterTimestampMonotonic and current
+// uptime (same CLOCK_MONOTONIC epoch); rx/tx/ping stay zero because an autossh
+// -R forward exposes no local interface to measure (see statAutoSSH). Because
+// those three are structurally unavailable, the dashboard gives autossh its own
+// one-line section rather than the RX/TX/ping card the VPN tunnels use — name,
+// up, and conn are the whole payload.
+func publishAutoSSH(tunnels []tunnelStatus) {
+	if !hubEnabled() {
+		return
+	}
+	for _, t := range tunnels {
+		tun := state.Tunnel{Name: t.name, Type: "AUTOSSH", Up: t.up}
+		if t.up && t.service != "" {
+			if active, err := systemd.ActiveEnterMonotonic(t.service); err == nil && active > 0 {
+				if up, err := host.Uptime(); err == nil && up > active {
+					tun.Conn = int64((up - active).Seconds())
+				}
+			}
+		}
+		publishTunnel(tun)
+	}
 }
 
 // autoSSHTunnelActive reports whether service is an active systemd unit.
@@ -556,15 +585,19 @@ func buildAutoSSH(opts CmdLineOpts) draw.Image {
 	screen := image.NewRGBA(fb.Bounds())
 
 	if opts.Demo {
-		drawAutoSSH(screen, []tunnelStatus{
+		demo := []tunnelStatus{
 			{name: "tunnel1", up: true},
 			{name: "tunnel2", up: false},
-		})
+		}
+		drawAutoSSH(screen, demo)
+		publishTunnel(state.Tunnel{Name: "tunnel1", Type: "AUTOSSH", Up: true, Conn: 3*86400 + 6*3600})
+		publishTunnel(state.Tunnel{Name: "tunnel2", Type: "AUTOSSH", Up: false, LastSeen: "2m ago"})
 		return screen
 	}
 
 	tunnels := statAutoSSH(opts)
 	drawAutoSSH(screen, tunnels)
+	publishAutoSSH(tunnels)
 
 	go func() {
 		for {
@@ -573,6 +606,7 @@ func buildAutoSSH(opts CmdLineOpts) draw.Image {
 			screenMu.Lock()
 			drawAutoSSH(screen, tunnels)
 			screenMu.Unlock()
+			publishAutoSSH(tunnels)
 		}
 	}()
 
@@ -598,44 +632,94 @@ func drawVPNStatus(screen draw.Image, name string, up bool) {
 	drawIconRows(screen, []iconTextRow{{icon: icon, text: text, bold: up}}, 40, 0, 16, "lato-regular")
 }
 
+// wgStat runs one WireGuard status check, logging and returning a zero (down)
+// Status on error so both the panel and the hub degrade to "disconnected"
+// rather than propagating an error a redraw loop can't surface.
+func wgStat(opts CmdLineOpts) wireguard.Status {
+	s, err := wireguard.Stat(opts.WireGuardCmd, opts.WireGuardIface)
+	if err != nil {
+		log.Warn().Err(err).Str("iface", opts.WireGuardIface).Msg("wireguard status check failed")
+	}
+	return s
+}
+
+// publishWireGuard sends one WireGuard reading to the hub, pinging the peer
+// endpoint for latency only when the tunnel is up and a hub is attached (the
+// only case that consumes the value), so a display-only run spawns no ping.
+func publishWireGuard(opts CmdLineOpts, s wireguard.Status) {
+	if !hubEnabled() {
+		return
+	}
+	t := state.Tunnel{Name: opts.WireGuardName, Type: "WIREGUARD", Up: s.Up, Rx: s.Rx, Tx: s.Tx}
+	if s.Up && s.Endpoint != "" {
+		if rtt, err := ping.RTT(s.Endpoint); err == nil {
+			t.Ping = float64(rtt) / float64(time.Millisecond)
+		}
+	}
+	publishTunnel(t)
+}
+
 // buildWireGuard allocates the WireGuard connection-status screen and,
 // unless demo, starts the goroutine that keeps it up to date. It satisfies
 // the func(CmdLineOpts) draw.Image contract registerScreen expects (see
 // init() below).
 //
-// wireguard.Connected reads kernel WireGuard state via `wg show` rather
-// than blocking on the network, so a short poll is cheap. One goroutine
-// owns the check, so there's no shared state and no data lock beyond
-// screenMu, which the fade carousel needs for its concurrent reads
-// (functions.go's fadeStep).
+// wireguard.Stat reads WireGuard state via `wg show <iface>` rather than
+// blocking on the network, so a short poll is cheap. The same call feeds the
+// panel's up/down icon and the web tunnel's rx/tx, so status is gathered once
+// per tick. One goroutine owns the check, so there's no shared state and no
+// data lock beyond screenMu, which the fade carousel needs for its concurrent
+// reads (functions.go's fadeStep).
 func buildWireGuard(opts CmdLineOpts) draw.Image {
 	screen := image.NewRGBA(fb.Bounds())
 
 	if opts.Demo {
 		drawVPNStatus(screen, opts.WireGuardName, true)
+		publishTunnel(state.Tunnel{Name: opts.WireGuardName, Type: "WIREGUARD", Up: true, Rx: 18600000000, Tx: 4100000000, Ping: 88})
 		return screen
 	}
 
-	up, err := wireguard.Connected(opts.WireGuardCmd, opts.WireGuardIface)
-	if err != nil {
-		log.Warn().Err(err).Str("iface", opts.WireGuardIface).Msg("wireguard status check failed")
-	}
-	drawVPNStatus(screen, opts.WireGuardName, up)
+	s := wgStat(opts)
+	drawVPNStatus(screen, opts.WireGuardName, s.Up)
+	publishWireGuard(opts, s)
 
 	go func() {
 		for {
 			time.Sleep(statusPollInterval)
-			up, err := wireguard.Connected(opts.WireGuardCmd, opts.WireGuardIface)
-			if err != nil {
-				log.Warn().Err(err).Str("iface", opts.WireGuardIface).Msg("wireguard status check failed")
-			}
+			s := wgStat(opts)
 			screenMu.Lock()
-			drawVPNStatus(screen, opts.WireGuardName, up)
+			drawVPNStatus(screen, opts.WireGuardName, s.Up)
 			screenMu.Unlock()
+			publishWireGuard(opts, s)
 		}
 	}()
 
 	return screen
+}
+
+// tsStat runs one Tailscale status check, logging and returning a zero (down)
+// Status on error so both the panel and the hub degrade to "disconnected".
+func tsStat(opts CmdLineOpts) tailscale.Status {
+	s, err := tailscale.Stat(opts.TailscaleCmd)
+	if err != nil {
+		log.Warn().Err(err).Msg("tailscale status check failed")
+	}
+	return s
+}
+
+// publishTailscale sends one Tailscale reading to the hub, pinging an online
+// peer's tailnet address for latency only when up and a hub is attached.
+func publishTailscale(opts CmdLineOpts, s tailscale.Status) {
+	if !hubEnabled() {
+		return
+	}
+	t := state.Tunnel{Name: opts.TailscaleName, Type: "TAILSCALE", Up: s.Up, Rx: s.Rx, Tx: s.Tx}
+	if s.Up && s.PingAddr != "" {
+		if rtt, err := ping.RTT(s.PingAddr); err == nil {
+			t.Ping = float64(rtt) / float64(time.Millisecond)
+		}
+	}
+	publishTunnel(t)
 }
 
 // buildTailscale allocates the Tailscale connection-status screen and,
@@ -643,35 +727,33 @@ func buildWireGuard(opts CmdLineOpts) draw.Image {
 // the func(CmdLineOpts) draw.Image contract registerScreen expects (see
 // init() below).
 //
-// tailscale.Connected shells out to `tailscale status --json`, a local IPC
-// call to tailscaled rather than a network round-trip, so a short poll is
-// cheap. One goroutine owns the check, so there's no shared state and no
-// data lock beyond screenMu, which the fade carousel needs for its
-// concurrent reads (functions.go's fadeStep).
+// tailscale.Stat shells out to `tailscale status --json`, a local IPC call to
+// tailscaled rather than a network round-trip, so a short poll is cheap. The
+// one call feeds both the panel's up/down icon and the web tunnel's rx/tx. One
+// goroutine owns the check, so there's no shared state and no data lock beyond
+// screenMu, which the fade carousel needs for its concurrent reads
+// (functions.go's fadeStep).
 func buildTailscale(opts CmdLineOpts) draw.Image {
 	screen := image.NewRGBA(fb.Bounds())
 
 	if opts.Demo {
 		drawVPNStatus(screen, opts.TailscaleName, true)
+		publishTunnel(state.Tunnel{Name: opts.TailscaleName, Type: "TAILSCALE", Up: true, Rx: 620000000, Tx: 210000000, Ping: 12})
 		return screen
 	}
 
-	up, err := tailscale.Connected(opts.TailscaleCmd)
-	if err != nil {
-		log.Warn().Err(err).Msg("tailscale status check failed")
-	}
-	drawVPNStatus(screen, opts.TailscaleName, up)
+	s := tsStat(opts)
+	drawVPNStatus(screen, opts.TailscaleName, s.Up)
+	publishTailscale(opts, s)
 
 	go func() {
 		for {
 			time.Sleep(statusPollInterval)
-			up, err := tailscale.Connected(opts.TailscaleCmd)
-			if err != nil {
-				log.Warn().Err(err).Msg("tailscale status check failed")
-			}
+			s := tsStat(opts)
 			screenMu.Lock()
-			drawVPNStatus(screen, opts.TailscaleName, up)
+			drawVPNStatus(screen, opts.TailscaleName, s.Up)
 			screenMu.Unlock()
+			publishTailscale(opts, s)
 		}
 	}()
 
@@ -687,7 +769,7 @@ func buildTailscale(opts CmdLineOpts) draw.Image {
 //  1. Write drawX(screen draw.Image, ...) — pure rendering, no allocation, no
 //     goroutines. It always redraws from a blank background (see drawHost's
 //     doc comment for why partial redraws are unsafe here). Model it on
-//     drawHost/drawNetwork/drawSpeedTest above.
+//     drawHost/drawNetwork/drawStorage above.
 //  2. Write buildX(opts CmdLineOpts) draw.Image — allocates the screen with
 //     image.NewRGBA(fb.Bounds()), draws the first frame synchronously (no
 //     lock needed yet — nothing else can see the image), starts whatever
@@ -699,7 +781,7 @@ func buildTailscale(opts CmdLineOpts) draw.Image {
 //     three.
 //  3. Call registerScreen("name", enabledFn, buildX) below. Use
 //     alwaysEnabled unless the screen should only appear behind a CLI flag,
-//     in which case pass a predicate like the speedtest entry does.
+//     in which case pass a predicate like the wireguard entry does.
 //
 // New() in display.go never needs to change — it just walks the registry.
 func init() {
@@ -707,7 +789,6 @@ func init() {
 	registerScreen("network", alwaysEnabled, buildNetwork)
 	registerScreen("storage", alwaysEnabled, buildStorage)
 	registerScreen("system", alwaysEnabled, buildSystem)
-	registerScreen("speedtest", func(o CmdLineOpts) bool { return o.SpeedTest }, buildSpeedTest)
 	registerScreen("autossh", func(o CmdLineOpts) bool { return o.AutoSSHTunnel1Name != "" }, buildAutoSSH)
 	registerScreen("wireguard", func(o CmdLineOpts) bool { return o.WireGuardIface != "" }, buildWireGuard)
 	registerScreen("tailscale", func(o CmdLineOpts) bool { return o.Tailscale }, buildTailscale)

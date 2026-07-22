@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cloudkey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Plain CSS, no framework. Class names are semantic (section/role) rather
+     than utility, so the markup reads as structure. Only genuinely per-item
+     computed values (up/down colors, gauge arcs) are set from JS. */
+  html,body{margin:0;background:#080a12}
+  *{box-sizing:border-box}
+  a{color:#8ad8ff}a:hover{color:#b8e6ff}
+  @keyframes livePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.82)}}
+
+  .c-cyan{color:#8ad8ff}.c-violet{color:#c4a6ff}.c-mint{color:#7ff0c8}.c-amber{color:#f6b73c}
+  .nowrap{white-space:nowrap}
+  /* Units stay readable but dimmer than the number they qualify. */
+  .u{color:rgba(238,244,255,.62);font-weight:600;margin-left:1px}
+  .gap{display:inline-block;width:5px}
+
+  .page{min-height:100vh;background:radial-gradient(90% 60% at 12% -5%,#1a1338 0%,transparent 55%),radial-gradient(70% 60% at 100% 105%,#062a35 0%,transparent 50%),#080a12;color:#eef4ff;font-family:'Space Grotesk',system-ui,sans-serif;padding:26px 22px 40px}
+  .wrap{max-width:1140px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+  /* Header */
+  .header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px}
+  .brand{display:flex;align-items:center;gap:13px}
+  .brand-badge{width:38px;height:38px;flex:none;border-radius:12px;background:linear-gradient(135deg,#7c5cff,#37d6e0);display:flex;align-items:center;justify-content:center;font:700 17px/1 'Space Grotesk';box-shadow:0 6px 20px rgba(124,92,255,.5)}
+  .brand-name{font:700 20px/1;letter-spacing:-.01em}
+  .brand-sub{font:500 11.5px/1 system-ui;color:rgba(238,244,255,.45);margin-top:6px}
+  .stats{display:flex;flex-wrap:wrap;gap:10px}
+  .stat{backdrop-filter:blur(8px);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:9px 13px;text-align:right}
+  .stat-k{font:600 8px/1 'JetBrains Mono',monospace;letter-spacing:.14em}
+  .stat-v{font:600 14px/1 'JetBrains Mono',monospace;margin-top:6px}
+
+  /* Hero */
+  .hero{display:flex;flex-wrap:wrap;gap:12px;align-items:stretch}
+  .hero-main{flex:1 1 296px;min-width:272px;backdrop-filter:blur(10px);background:linear-gradient(160deg,rgba(124,92,255,.15),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.11);border-radius:20px;padding:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+  .hero-sub{font:500 12px/1.3 system-ui;color:rgba(238,244,255,.6);text-align:center}
+  /* 2x2 by design - never collapses to one column (see website/CLAUDE.md). */
+  .hero-grid{flex:2 1 400px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .tile{min-height:172px;backdrop-filter:blur(10px);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px}
+  .tile-sub{font:500 11px/1 system-ui;color:rgba(238,244,255,.55)}
+  /* Missing-disk placeholder is never removed, only styled as absent. */
+  .tile--empty{background:rgba(255,255,255,.02);border:1px dashed rgba(255,255,255,.12);backdrop-filter:none;gap:12px;opacity:.6}
+  .tile-empty-ring{width:104px;height:104px;border-radius:50%;border:2px dashed rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;color:rgba(238,244,255,.35);font:600 22px/1 'JetBrains Mono',monospace}
+  .tile-empty-cap{text-align:center}
+  .tile-empty-k{font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.15em;color:rgba(238,244,255,.45)}
+  .tile-empty-v{font:500 10.5px/1 system-ui;color:rgba(238,244,255,.35);margin-top:6px}
+
+  /* Gauge: 270deg arc, value overlaid in the ring, label below it. */
+  .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .gauge{position:relative;display:flex;align-items:center;justify-content:center}
+  .gauge svg{display:block}
+  .gauge-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+  .gauge-val{font:700 var(--vs,30px)/1 'Space Grotesk';letter-spacing:-.02em}
+  .gauge-label{font:600 9.5px/1 'JetBrains Mono',monospace;letter-spacing:.16em;color:rgba(238,244,255,.5);text-align:center}
+
+  /* Section headers */
+  .section{margin-top:4px}
+  .section-head{display:flex;align-items:center;gap:12px;margin:0 2px 12px}
+  .section-title{font:600 11px/1 'JetBrains Mono',monospace;letter-spacing:.18em;color:rgba(238,244,255,.55)}
+  .section-rule{flex:1;height:1px;background:rgba(255,255,255,.09)}
+  .section-sum{font:600 10.5px/1 'JetBrains Mono',monospace;color:rgba(238,244,255,.45)}
+
+  /* Cards shared */
+  .name-wrap{display:flex;align-items:center;gap:9px;min-width:0}
+  .name{font:600 14px/1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dot{width:9px;height:9px;flex:none;border-radius:50%}
+
+  /* Tunnel cards (wireguard + tailscale) */
+  .grid-tunnels{display:grid;grid-template-columns:repeat(auto-fit,minmax(252px,1fr));gap:12px}
+  .tcard{backdrop-filter:blur(10px);border:1px solid;border-radius:16px;padding:15px 16px}
+  .tcard-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .ttype{font:600 8.5px/1 'JetBrains Mono',monospace;letter-spacing:.09em;flex:none}
+  .tmetrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 10px}
+  .metric{display:grid;grid-template-rows:11px auto;gap:5px}
+  .metric-k{height:11px;display:flex;align-items:center;gap:5px;font:600 8px/1 'JetBrains Mono',monospace;letter-spacing:.13em;color:rgba(238,244,255,.4)}
+  .metric-arrow{font-size:11px;line-height:11px}
+  .metric-v{font:600 13.5px/1 'JetBrains Mono',monospace;color:rgba(238,244,255,.85)}
+
+  /* One-line cards (autossh tunnels + applications) */
+  .grid-line{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+  .linecard{backdrop-filter:blur(10px);border:1px solid;border-radius:16px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .linecard-tag{font:600 12px/1 'JetBrains Mono',monospace;flex:none}
+  /* Hover changes border/color only - no bounce or translate. */
+  .app{text-decoration:none;color:inherit;transition:border-color .12s}
+  .app:hover{border-color:rgba(255,255,255,.35)}
+
+  /* Footer */
+  .footer{display:flex;align-items:center;gap:9px;margin-top:6px;padding-top:2px}
+  .live-dot{width:8px;height:8px;border-radius:50%;animation:livePulse 1.8s ease-in-out infinite}
+  .live-text{font:500 11px/1 'JetBrains Mono',monospace;color:rgba(238,244,255,.42)}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="wrap">
+
+    <div class="header">
+      <div class="brand">
+        <span class="brand-badge">N</span>
+        <div>
+          <div class="brand-name" id="host-name">&mdash;</div>
+          <div class="brand-sub" id="host-sub">&mdash;</div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-k c-cyan">LAN</div><div class="stat-v" id="net-lan">&mdash;</div></div>
+        <div class="stat"><div class="stat-k c-violet">WAN</div><div class="stat-v" id="net-wan">&mdash;</div></div>
+        <div class="stat"><div class="stat-k c-mint">UPTIME</div><div class="stat-v" id="uptime">&mdash;</div></div>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div class="hero-main">
+        <div id="hero-gauge"></div>
+        <div class="hero-sub" id="hero-sub"></div>
+      </div>
+      <div class="hero-grid" id="hero-grid"></div>
+    </div>
+
+    <!-- autossh gets its own one-line section, not the RX/TX/ping card the VPN
+         tunnels use: its liveness is `systemctl is-active <unit>`, so there is
+         no interface to read counters from and no peer to ping. Those three
+         metrics would be permanent zeros. Do not merge these two sections. -->
+    <div class="section" id="sec-autossh" hidden>
+      <div class="section-head">
+        <span class="section-title">AUTOSSH TUNNELS</span>
+        <span class="section-rule"></span>
+        <span class="section-sum" id="autossh-sum"></span>
+      </div>
+      <div class="grid-line" id="grid-autossh"></div>
+    </div>
+
+    <div class="section" id="sec-vpn" hidden>
+      <div class="section-head">
+        <span class="section-title">WIREGUARD TUNNELS</span>
+        <span class="section-rule"></span>
+        <span class="section-sum" id="vpn-sum"></span>
+      </div>
+      <div class="grid-tunnels" id="grid-vpn"></div>
+    </div>
+
+    <div class="section" id="sec-apps" hidden>
+      <div class="section-head">
+        <span class="section-title">APPLICATIONS</span>
+        <span class="section-rule"></span>
+        <span class="section-sum" id="apps-sum"></span>
+      </div>
+      <div class="grid-line" id="grid-apps"></div>
+    </div>
+
+    <div class="footer">
+      <span class="live-dot" id="live-dot"></span>
+      <span class="live-text" id="live-text"></span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var STREAM_URL = '/events';
+
+  var GREEN = '#37e0a6', AMBER = '#f6b73c', RED = '#f5566e';
+  var TYPE_COLOR = { WIREGUARD: '#c4a6ff', TAILSCALE: '#7ff0c8', AUTOSSH: '#8ad8ff' };
+  var DISK_LABEL = { ssd: 'SSD', rootfs: 'ROOTFS', sdcard: 'SDCARD' };
+
+  // Demo snapshot. With no SSE endpoint the page shows this statically - it is
+  // a mockup, not a simulation, so nothing here animates or drifts.
+  function seed() {
+    return {
+      host: { name: 'nebula-01', os: 'Debian 12', arch: 'aarch64', uptimeSec: 12 * 86400 + 4 * 3600 + 31 * 60 },
+      net: { lan: '192.168.1.42', wan: '203.0.113.77' },
+      cpu: { cores: 4, loadAvg: 0.62 },
+      mem: { used: 2.63e9, total: 4.09e9 },
+      ssd: { mounted: true, used: 214e9, total: 236e9 },
+      rootfs: { mounted: true, used: 24.9e9, total: 31.9e9 },
+      sdcard: { mounted: true, used: 6.9e9, total: 31.9e9 },
+      apps: [
+        { name: 'Grafana', port: 3000, up: true },
+        { name: 'Portainer', port: 9000, up: true },
+        { name: 'Home Assistant', port: 8123, up: true },
+        { name: 'Jellyfin', port: 8096, up: false }
+      ],
+      tunnels: [
+        // autossh rows carry name/type/up plus conn - the systemd check cannot
+        // supply counters or latency, and the seed must not imply otherwise.
+        { name: 'home-vps', type: 'AUTOSSH', up: true, conn: 3 * 86400 + 6 * 3600 + 12 * 60 },
+        { name: 'backup-vps', type: 'AUTOSSH', up: false },
+        { name: 'wg-office', type: 'WIREGUARD', up: true, rx: 18.6e9, tx: 4.10e9, conn: 11 * 86400, ping: 88 },
+        { name: 'ts-laptop', type: 'TAILSCALE', up: true, rx: 620e6, tx: 210e6, conn: 5 * 3600, ping: 12 },
+        { name: 'wg-backup', type: 'WIREGUARD', up: false, rx: 0, tx: 0, conn: 0, ping: 0, lastSeen: '2m ago' }
+      ]
+    };
+  }
+
+  var data = seed();
+  var connected = false;
+  var updatedAt = Date.now();
+
+  /* ---------- formatting ---------- */
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // 3 significant figures, 1000-based, unit returned separately so it can be
+  // dimmed relative to the number.
+  function fmtBytes(n) {
+    n = Number(n) || 0;
+    var u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], i = 0;
+    while (n >= 1000 && i < u.length - 1) { n /= 1000; i++; }
+    var v = n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2);
+    return [{ v: v, u: u[i] }];
+  }
+
+  // Durations render as exactly two parts (3d 06h, 5h 18m).
+  function dur(sec) {
+    sec = Math.max(0, Math.floor(Number(sec) || 0));
+    var d = Math.floor(sec / 86400); sec -= d * 86400;
+    var h = Math.floor(sec / 3600); sec -= h * 3600;
+    var m = Math.floor(sec / 60), s = sec - m * 60;
+    if (d > 0) return [{ v: d, u: 'd' }, { v: pad(h), u: 'h' }];
+    if (h > 0) return [{ v: h, u: 'h' }, { v: pad(m), u: 'm' }];
+    return [{ v: m, u: 'm' }, { v: pad(s), u: 's' }];
+  }
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  // seg renders [{v,u},...] with dimmed units.
+  function seg(parts) {
+    return '<span class="nowrap">' + parts.map(function (p, i) {
+      return (i ? '<span class="gap"></span>' : '') + esc(p.v) + '<span class="u">' + esc(p.u) + '</span>';
+    }).join('') + '</span>';
+  }
+  function usage(used, total) {
+    var a = fmtBytes(used)[0], b = fmtBytes(total)[0];
+    return '<span class="nowrap">' + esc(a.v) + '<span class="u">' + esc(a.u) + '</span> of ' +
+      esc(b.v) + '<span class="u">' + esc(b.u) + '</span> used</span>';
+  }
+  function pctOf(x) {
+    var used = Math.max(0, Number(x && x.used) || 0);
+    var total = Math.max(1, Number(x && x.total) || 0);
+    return Math.round((used / total) * 100);
+  }
+  // CPU gauge is normalized 1-minute load average, not instantaneous usage.
+  function cpuPct(cpu) {
+    var cores = Math.max(1, Number(cpu && cpu.cores) || 1);
+    var load = Math.max(0, Number(cpu && cpu.loadAvg) || 0);
+    return Math.max(0, Math.min(100, Math.round((load / cores) * 100)));
+  }
+  function threshold(pct) { return pct >= 90 ? RED : pct >= 70 ? AMBER : GREEN; }
+
+  /* ---------- gauge (270deg arc) ---------- */
+
+  function gauge(pct, label, size) {
+    pct = Math.max(0, Math.min(100, Number(pct) || 0));
+    var sw = Math.max(7, Math.round(size * 0.075));
+    var r = (size - sw) / 2 - 1;
+    var c = size / 2;
+    var circ = 2 * Math.PI * r;
+    var arc = circ * 0.75;                 // 270 of 360 degrees
+    var color = threshold(pct);
+    var valSize = Math.round(size * 0.28);
+    // Rotated 135deg so the 270deg sweep opens at the bottom.
+    return '' +
+      '<div class="gauge-wrap">' +
+      '<div class="gauge" style="width:' + size + 'px;height:' + size + 'px">' +
+        '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' +
+          '<g transform="rotate(135 ' + c + ' ' + c + ')">' +
+            '<circle cx="' + c + '" cy="' + c + '" r="' + r + '" fill="none" stroke="rgba(255,255,255,.07)" ' +
+              'stroke-width="' + sw + '" stroke-linecap="round" stroke-dasharray="' + arc + ' ' + circ + '"></circle>' +
+            '<circle cx="' + c + '" cy="' + c + '" r="' + r + '" fill="none" stroke="' + color + '" ' +
+              'stroke-width="' + sw + '" stroke-linecap="round" stroke-dasharray="' + (arc * pct / 100) + ' ' + circ + '" ' +
+              'style="filter:drop-shadow(0 0 6px ' + color + '88)"></circle>' +
+          '</g>' +
+        '</svg>' +
+        '<div class="gauge-center">' +
+          '<div class="gauge-val" style="--vs:' + valSize + 'px">' + pct + '<span class="u">%</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="gauge-label">' + esc(label) + '</div>' +
+      '</div>';
+  }
+
+  /* ---------- app links ---------- */
+
+  // The payload has no host field: link to the page's own scheme/hostname with
+  // only the port swapped. The browser never probes - App.up is server truth.
+  function appHref(app, fallbackHost) {
+    var loc = window.location || {};
+    var proto = loc.protocol === 'https:' ? 'https:' : 'http:';
+    var url = new URL(proto + '//localhost/');
+    url.hostname = loc.hostname || fallbackHost || 'localhost';
+    url.port = String(app.port);
+    return url.href;
+  }
+
+  /* ---------- render ---------- */
+
+  function $(id) { return document.getElementById(id); }
+
+  function tint(up) {
+    return up
+      ? { dot: GREEN, bg: 'rgba(55,224,166,.06)', border: 'rgba(55,224,166,.24)', tag: '#7ff0c8' }
+      : { dot: RED, bg: 'rgba(245,86,110,.06)', border: 'rgba(245,86,110,.24)', tag: RED };
+  }
+
+  function diskTile(key) {
+    var x = data[key], label = DISK_LABEL[key];
+    if (!x || !x.mounted) {
+      return '<div class="tile tile--empty">' +
+        '<div class="tile-empty-ring">&mdash;</div>' +
+        '<div class="tile-empty-cap"><div class="tile-empty-k">' + esc(label) + '</div>' +
+        '<div class="tile-empty-v">NOT MOUNTED</div></div></div>';
+    }
+    return '<div class="tile">' + gauge(pctOf(x), label, 104) +
+      '<div class="tile-sub">' + usage(x.used, x.total) + '</div></div>';
+  }
+
+  function render() {
+    var host = data.host || {}, net = data.net || {};
+
+    $('host-name').textContent = host.name || '—';
+    $('host-sub').textContent = (host.os || '?') + ' · ' + (host.arch || '?');
+    $('net-lan').textContent = net.lan || '—';
+    $('net-wan').textContent = net.wan || '—';
+    $('uptime').innerHTML = seg(dur(host.uptimeSec));
+
+    // Hero is the SSD when mounted, else RootFS; the other two disks fill the
+    // bottom of the always-2x2 grid.
+    var heroKey = (data.ssd && data.ssd.mounted) ? 'ssd' : 'rootfs';
+    var heroX = data[heroKey] || { used: 0, total: 1 };
+    var rest = ['ssd', 'rootfs', 'sdcard'].filter(function (k) { return k !== heroKey; });
+
+    $('hero-gauge').innerHTML = gauge(pctOf(heroX), DISK_LABEL[heroKey], 166);
+    $('hero-sub').innerHTML = usage(heroX.used, heroX.total);
+
+    var cpu = data.cpu || {}, mem = data.mem || {};
+    $('hero-grid').innerHTML =
+      '<div class="tile">' + gauge(cpuPct(cpu), 'CPU LOAD', 104) +
+        '<div class="tile-sub">' + esc(Math.max(1, Number(cpu.cores) || 1)) + ' cores · ' +
+        esc((Number(cpu.loadAvg) || 0).toFixed(2)) + ' avg</div></div>' +
+      '<div class="tile">' + gauge(pctOf(mem), 'MEMORY', 104) +
+        '<div class="tile-sub">' + usage(mem.used, mem.total) + '</div></div>' +
+      diskTile(rest[0]) + diskTile(rest[1]);
+
+    var tunnels = data.tunnels || [];
+    renderAutossh(tunnels.filter(function (t) { return t.type === 'AUTOSSH'; }));
+    renderVpn(tunnels.filter(function (t) { return t.type !== 'AUTOSSH'; }));
+    renderApps(data.apps || [], net.lan);
+    renderFooter();
+  }
+
+  function summary(list) {
+    var up = list.filter(function (x) { return x.up; }).length;
+    return up + ' up · ' + (list.length - up) + ' down';
+  }
+
+  function renderAutossh(list) {
+    $('sec-autossh').hidden = list.length === 0;
+    $('autossh-sum').textContent = summary(list);
+    $('grid-autossh').innerHTML = list.map(function (t) {
+      var c = tint(!!t.up);
+      // Conn (systemd ActiveEnterTimestamp vs host uptime) is the only metric
+      // autossh has, so an up tunnel shows how long it has held rather than a
+      // redundant "UP" beside an already-green dot.
+      var tag = t.up ? (Number(t.conn) > 0 ? seg(dur(t.conn)) : 'UP') : 'DOWN';
+      return '<div class="linecard" style="background:' + c.bg + ';border-color:' + c.border + '">' +
+        '<div class="name-wrap"><span class="dot" style="background:' + c.dot +
+          ';box-shadow:0 0 10px ' + c.dot + '"></span>' +
+          '<span class="name">' + esc(t.name) + '</span></div>' +
+        '<span class="linecard-tag" style="color:' + c.tag + '">' + tag + '</span></div>';
+    }).join('');
+  }
+
+  function renderVpn(list) {
+    $('sec-vpn').hidden = list.length === 0;
+    $('vpn-sum').textContent = summary(list);
+    $('grid-vpn').innerHTML = list.map(function (t) {
+      var c = tint(!!t.up);
+      var ping = Number(t.ping) || 0;
+      // Latency has no percentage, so the 50ms/100ms cutoffs are mapped onto
+      // threshold()'s bands rather than duplicating the colour math inline.
+      var slot = t.up
+        ? { k: 'PING', v: seg([{ v: ping, u: 'ms' }]), color: threshold(ping >= 100 ? 100 : ping >= 50 ? 70 : 0) }
+        : { k: 'LAST SEEN', v: esc(t.lastSeen || '—'), color: RED };
+      return '<div class="tcard" style="background:' + c.bg + ';border-color:' + c.border + '">' +
+        '<div class="tcard-head">' +
+          '<div class="name-wrap"><span class="dot" style="background:' + c.dot +
+            ';box-shadow:0 0 10px ' + c.dot + '"></span>' +
+            '<span class="name">' + esc(t.name) + '</span></div>' +
+          '<span class="ttype" style="color:' + (TYPE_COLOR[t.type] || '#8ad8ff') + '">' + esc(t.type) + '</span>' +
+        '</div>' +
+        '<div class="tmetrics">' +
+          metric('<span class="metric-arrow c-cyan">↓</span>RX', seg(fmtBytes(t.rx)), '') +
+          metric('<span class="metric-arrow c-amber">↑</span>TX', seg(fmtBytes(t.tx)), '') +
+          metric('<span class="metric-arrow" style="visibility:hidden"></span>' + slot.k, slot.v, slot.color) +
+        '</div></div>';
+    }).join('');
+  }
+
+  // Arrows live in the metric label, never beside the value.
+  function metric(labelHtml, valueHtml, color) {
+    return '<div class="metric"><div class="metric-k">' + labelHtml + '</div>' +
+      '<div class="metric-v"' + (color ? ' style="color:' + color + '"' : '') + '>' + valueHtml + '</div></div>';
+  }
+
+  function renderApps(list, lanHost) {
+    $('sec-apps').hidden = list.length === 0;
+    $('apps-sum').textContent = summary(list);
+    $('grid-apps').innerHTML = list.map(function (a) {
+      var c = tint(!!a.up);
+      return '<a class="linecard app" href="' + esc(appHref(a, lanHost)) + '" target="_blank" rel="noopener" ' +
+        'style="background:' + c.bg + ';border-color:' + c.border + '">' +
+        '<div class="name-wrap"><span class="dot" style="background:' + c.dot +
+          ';box-shadow:0 0 10px ' + c.dot + '"></span>' +
+          '<span class="name">' + esc(a.name) + '</span></div>' +
+        '<span class="linecard-tag" style="color:' + c.tag + '">:' + esc(a.port) + '</span></a>';
+    }).join('');
+  }
+
+  function renderFooter() {
+    var ago = Math.max(0, Math.round((Date.now() - updatedAt) / 1000));
+    var color = connected ? GREEN : AMBER;
+    $('live-dot').style.background = color;
+    $('live-dot').style.boxShadow = '0 0 8px ' + color;
+    $('live-text').textContent = connected
+      ? 'LIVE · streaming via SSE · updated ' + ago + 's ago'
+      : 'DEMO STREAM · no SSE endpoint · updated ' + ago + 's ago';
+  }
+
+  /* ---------- SSE ---------- */
+
+  // The backend sends a full snapshot on connect and one changed slice per
+  // timer tick after that. A full snapshot replaces state outright so stale
+  // demo-seed rows cannot linger; slices merge onto current state.
+  function isFullSnapshot(msg) {
+    return !!msg && 'host' in msg && 'net' in msg && 'cpu' in msg && 'mem' in msg &&
+      'ssd' in msg && 'rootfs' in msg && 'sdcard' in msg && 'apps' in msg && 'tunnels' in msg;
+  }
+
+  // Tunnels upsert by type+name because display names are configurable per
+  // source; every other key replaces wholesale.
+  function tunnelKey(t) {
+    return String(t.type || '') + '\u0000' + String(t.name || '');
+  }
+
+  function mergePatch(prev, patch) {
+    var out = {};
+    for (var k in prev) out[k] = prev[k];
+    Object.keys(patch).forEach(function (k) {
+      if (k !== 'tunnels') { out[k] = patch[k]; return; }
+      var by = new Map((out.tunnels || []).map(function (t) { return [tunnelKey(t), t]; }));
+      (patch.tunnels || []).forEach(function (t) {
+        by.set(tunnelKey(t), Object.assign({}, by.get(tunnelKey(t)), t));
+      });
+      out.tunnels = Array.from(by.values());
+    });
+    return out;
+  }
+
+  function connectSSE() {
+    try {
+      var es = new EventSource(STREAM_URL);
+      es.onmessage = function (e) {
+        var msg;
+        try { msg = JSON.parse(e.data); } catch (_) { return; }
+        data = isFullSnapshot(msg) ? msg : mergePatch(data, msg);
+        connected = true;
+        updatedAt = Date.now();
+        render();
+      };
+      es.onerror = function () {
+        // Do NOT call es.close() here: closing permanently disables
+        // EventSource's built-in auto-reconnect, so a single transient
+        // failure would silently stop the dashboard from ever updating
+        // again while the footer kept claiming "LIVE". Leaving the
+        // EventSource open lets the browser retry the connection on its
+        // own; we just reflect the outage in the footer until it recovers.
+        connected = false;
+        renderFooter();
+      };
+    } catch (_) { /* no endpoint: the seed snapshot stays on screen */ }
+  }
+
+  if (typeof document !== 'undefined') {
+    render();
+    setInterval(renderFooter, 1000);
+    connectSSE();
+  }
+
+  // Node-only export for dashboard_test.js. `typeof module` is always
+  // 'undefined' in a browser (no CommonJS globals there), so this never
+  // runs client-side; `typeof document` is always 'undefined' under plain
+  // Node (no DOM), so the block above never runs there. Kept as one shared
+  // dual-environment guard rather than two, per this file's single-plain-
+  // <script>, no-build-step design.
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      fmtBytes: fmtBytes, dur: dur, pad: pad, pctOf: pctOf, cpuPct: cpuPct,
+      isFullSnapshot: isFullSnapshot, tunnelKey: tunnelKey, mergePatch: mergePatch, esc: esc,
+      // Getter (not a snapshot value) so dashboard_test.js can observe the
+      // module-level `connected` var change after firing es.onerror, without
+      // exposing a setter that would let a test corrupt browser state.
+      isConnected: function () { return connected; },
+      // connectSSE itself is only auto-invoked under `typeof document !==
+      // 'undefined'` (see above), so the Node test calls it directly to
+      // exercise the real es.onerror handler DASH-LEAK-01 fixed.
+      connectSSE: connectSSE
+    };
+  }
+})();
+</script>
+</body>
+</html>

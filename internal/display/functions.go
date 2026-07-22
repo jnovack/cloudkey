@@ -4,12 +4,13 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
-	"log"
 	"math"
 	"time"
 
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
+	"github.com/rs/zerolog/log"
+
 	"github.com/jnovack/cloudkey/internal/fonts"
 )
 
@@ -126,6 +127,10 @@ func pixelShift(t time.Time) image.Point {
 // the small OLED screens.
 func write(screen draw.Image, text string, x, y int, size float64, fontname string, bold bool) {
 	font := fonts.Load(fontname)
+	if font == nil {
+		log.Warn().Str("font", fontname).Msg("write: unregistered font")
+		return
+	}
 	// Setup new context
 	c := freetype.NewContext()
 	c.SetFont(font)            // Set the font
@@ -138,12 +143,12 @@ func write(screen draw.Image, text string, x, y int, size float64, fontname stri
 	baseY := y + int(c.PointToFixed(math.Round(float64(size)+1))>>6) // y is center of line, shift to top of line
 	if bold {
 		if _, err := c.DrawString(text, freetype.Pt(x+1, baseY)); err != nil {
-			log.Println(err)
+			log.Warn().Err(err).Str("text", text).Msg("draw string")
 			return
 		}
 	}
 	if _, err := c.DrawString(text, freetype.Pt(x, baseY)); err != nil {
-		log.Println(err)
+		log.Warn().Err(err).Str("text", text).Msg("draw string")
 		return
 	}
 }
@@ -153,10 +158,16 @@ func write(screen draw.Image, text string, x, y int, size float64, fontname stri
 // block of multiple lines to a shared left edge). ok is false if any rune in
 // text has no glyph in the font, matching truetype.Face.GlyphAdvance.
 func textWidth(text string, size float64, fontname string) (width int, ok bool) {
+	font := fonts.Load(fontname)
+	if font == nil {
+		// truetype.NewFace nil-dereferences on a nil font, which would panic a
+		// redraw goroutine and take the whole daemon with it.
+		return 0, false
+	}
 	opts := truetype.Options{}
 	opts.DPI = 72
 	opts.Size = size + 1
-	face := truetype.NewFace(fonts.Load(fontname), &opts)
+	face := truetype.NewFace(font, &opts)
 
 	for _, t := range text {
 		awidth, ok := face.GlyphAdvance(rune(t))

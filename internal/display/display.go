@@ -1,6 +1,7 @@
 package display
 
 import (
+	"fmt"
 	"image"
 	"image/draw"
 	"math/rand"
@@ -11,11 +12,15 @@ import (
 
 	"github.com/jnovack/cloudkey/internal/buildversion"
 	"github.com/jnovack/cloudkey/internal/images"
+	"github.com/jnovack/cloudkey/internal/state"
 	"github.com/jnovack/cloudkey/pkg/framebuffer"
 	"github.com/jnovack/cloudkey/pkg/leds"
 )
 
-const fbDevice = "/dev/fb0"
+// fbDevice is the panel device openFramebuffer opens. It is a var rather than
+// a const only so a test can point it at a nonexistent path and exercise New's
+// open-failure path; nothing in production ever reassigns it.
+var fbDevice = "/dev/fb0"
 
 // screens holds one image per registered screen. Each build* func's
 // background goroutine(s) redraw their screen's pixels in place (see
@@ -31,13 +36,42 @@ var myLeds leds.LEDS
 var fb draw.Image
 var width, height int
 
+// hub is the shared state store the screen goroutines publish their raw
+// readings into, so the same timer that redraws a screen also updates any
+// connected web dashboard. It is set once by New and may be nil (the web
+// server disabled, or a buildX unit test that never calls New) — the publish
+// helpers below are all no-ops in that case, so screen goroutines can call
+// them unconditionally. This deliberately avoids threading a hub parameter
+// through every build func, which would break the func(CmdLineOpts) draw.Image
+// contract registerScreen depends on.
+var hub *state.Hub
+
+// hubEnabled reports whether a hub is attached, so a screen goroutine can skip
+// the extra work of gathering web-only data (a latency ping, a systemd
+// connected-time lookup) when nothing consumes it.
+func hubEnabled() bool { return hub != nil }
+
+func publishHost(v state.Host)             { publishTo(func() { hub.PublishHost(v) }) }
+func publishNet(v state.Net)               { publishTo(func() { hub.PublishNet(v) }) }
+func publishCPU(v state.CPU)               { publishTo(func() { hub.PublishCPU(v) }) }
+func publishMem(v state.Mem)               { publishTo(func() { hub.PublishMem(v) }) }
+func publishDisk(key string, v state.Disk) { publishTo(func() { hub.PublishDisk(key, v) }) }
+func publishTunnel(v state.Tunnel)         { publishTo(func() { hub.PublishTunnel(v) }) }
+
+// publishTo runs fn only when a hub is attached, centralizing the nil check the
+// six typed helpers above share.
+func publishTo(fn func()) {
+	if hub != nil {
+		fn()
+	}
+}
+
 // CmdLineOpts structure for the command line options
 type CmdLineOpts struct {
 	Delay                 float64
 	BlankDelay            float64
 	Reset                 bool
 	Demo                  bool
-	SpeedTest             bool
 	Version               bool
 	Pidfile               string
 	ResetButtonCmd        string
@@ -51,6 +85,9 @@ type CmdLineOpts struct {
 	Tailscale             bool
 	TailscaleName         string
 	TailscaleCmd          string
+	HTTPPort              int
+	WebRoot               string
+	Apps                  string
 }
 
 // screenBuilder describes one screen in the carousel: a name for logging, a
@@ -119,14 +156,27 @@ func animateBootLoader() {
 // New opens the framebuffer and initializes the screens. Call it after any
 // startup logging in main() — opening the framebuffer prints the panel
 // resolution, and callers generally want their own banner to appear first.
-func New(opts CmdLineOpts) {
+//
+// h is the shared state hub the screen goroutines publish into; pass nil to run
+// display-only (no web dashboard). It is stored before any screen is built so a
+// screen's first-frame publish reaches it.
+//
+// It returns an error only when the framebuffer device can't be opened — the
+// expected failure on non-target hardware (no /dev/fb0, or no privileges).
+// That is returned rather than panicked or log.Fatal'd here so the entrypoint
+// reports it in the same structured form as every other startup failure and
+// still runs its cleanup (clearing the pidfile); panicking printed a raw Go
+// stack trace and skipped that cleanup entirely.
+func New(opts CmdLineOpts, h *state.Hub) error {
+	hub = h
+
 	if err := openFramebuffer(); err != nil {
-		panic(err)
+		return fmt.Errorf("open framebuffer: %w", err)
 	}
 
 	if opts.Reset {
 		clearScreen()
-		return
+		return nil
 	}
 
 	myLeds = leds.LEDS{}
@@ -153,6 +203,7 @@ func New(opts CmdLineOpts) {
 
 	// Start the carousel!
 	startFadeCarousel(opts.Delay, opts.BlankDelay)
+	return nil
 }
 
 // Shutdown turns off the "running" blue LED and leaves white lit, so the
@@ -176,10 +227,4 @@ func BlinkResetAck() {
 	white.FadeIn(300 * time.Millisecond)
 	white.FadeOut(300 * time.Millisecond)
 	myLeds.LED("blue").On()
-}
-
-// Output the screen/image immediately to the framebuffer
-func Output(i int) {
-	screen := screens[i]
-	draw.Draw(fb, fb.Bounds(), screen, image.Point{}, draw.Over)
 }

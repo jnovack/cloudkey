@@ -2,9 +2,10 @@
 
 **cloudkey** is a replacement for `/usr/bin/ck-ui` on your Ubiquiti Cloud Key
 Generation 2 device: a small Go daemon that drives the front-panel OLED
-display and status LEDs directly, without the stock UI.
+display and status LEDs directly, without the stock UI, with an optional web
+dashboard. Works on UCK-G2 and UCK-G2-PLUS models.
 
-## Screens
+## What's It Do?
 
 The display cycles through these screens, fading in and holding each one lit
 before fading to a genuinely black, held-blank state (real rest time for the
@@ -14,36 +15,15 @@ OLED panel) between screens.
 | --- | --- |
 | ![host](docs/screenshots/screen-host.png) | Hostname and current date/time |
 | ![network](docs/screenshots/screen-network.png) | LAN and WAN IP addresses |
-| ![storage](docs/screenshots/screen-storage.png) | Used space and percent-used for the SD card (`/sdcard`) and the internal volume (`/volume`), with a warning icon past 90% used |
+| ![storage](docs/screenshots/screen-storage.png) | Used space and percent-used for the SD card (`/sdcard`) and the internal volume (UCK-G2-PLUS only) (`/volume`), with a warning icon past 90% used |
 | ![system](docs/screenshots/screen-system.png) | CPU and memory utilization, plus used space and percent-used for the root filesystem |
-| ![speedtest](docs/screenshots/screen-speedtest.png) | Hourly download/upload speed test results (opt-in, see `-speedtest` below) |
 | ![autossh](docs/screenshots/screen-autossh.png) | Up/down status for one or two autossh tunnels (opt-in, see `-autossh-tunnel1-name` below) |
 | ![wireguard](docs/screenshots/screen-wireguard.png) | WireGuard tunnel connection status (opt-in, see `-wireguard-iface` below) |
 | ![tailscale](docs/screenshots/screen-tailscale.png) | Tailscale connection status (opt-in, see `-tailscale` below) |
 
-WireGuard and Tailscale check actual tunnel liveness rather than the
-systemd unit state of the underlying service: `wg-quick@<iface>` is
-typically a one-shot unit that stays "active" forever once `wg-quick up`
-succeeds, and `tailscaled`'s unit reports "active" whenever the daemon
-process is running, neither of which reflects the peer/tailnet actually
-being reachable. So WireGuard status comes from a recent handshake
-(`wg show <iface> latest-handshakes`), and Tailscale status comes from
-`tailscale status --json`'s `BackendState`.
+Web Dashboard (opt-in, see -http-port below)
 
-autossh is the exception: `-R` (remote) forwards bind no local port to
-probe, so without a `-M` monitor port there's no local traffic signal to
-check at all. autossh status therefore falls back to `systemctl is-active
-<unit>` — which only proves the autossh/ssh process is still running, not
-that the tunnel is passing traffic. Pair each tunnel's ssh config with
-`ServerAliveInterval`/`ServerAliveCountMax` so a genuinely dead connection
-makes the process exit (and the unit go inactive) instead of hanging open
-indefinitely; without that, a stale tunnel can still show as "up".
-
-After boot, the status LED is blue while the daemon is idle. With `-speedtest`
-enabled, it blinks blue while a speed test is running. When
-`-reset-button-cmd` is configured, a physical reset-button press blinks it
-white (a 300ms fade up, 300ms fade down) as acknowledgment, then returns to
-blue.
+![Dashboard, full](docs/screenshots/dashboard02.png)
 
 ## Installation
 
@@ -65,6 +45,14 @@ Disable the old service first.
 1. `systemctl disable ck-ui`
 2. `systemctl stop ck-ui`
 
+> **Do not skip this.** `ck-ui` and `cloudkey` both drive the OLED panel, and
+> both want the front-panel reset button — but the button's event device
+> (`/dev/input/event1`) can only be read usefully by one process. Leaving
+> `ck-ui` running means the two fight over the panel, and the stock daemon's
+> timed button behaviour (a documented factory reset on a long hold) stays
+> live alongside cloudkey's own. Verify with `fuser -v /dev/input/event1` —
+> `cloudkey` should be the only listed consumer.
+
 Install this one.
 
 1. Copy `cloudkey.service` to `/lib/systemd/system/` and ensure the
@@ -80,8 +68,16 @@ Install this one.
 1. Have a working Go environment (see `go.mod` for the minimum version).
 2. `make build` — cross-compiles for the Cloud Key's `linux/arm` target and
    writes the binary to `.local/bin/cloudkey`.
-3. SCP the file over to your Cloud Key, or use `make deploy` if you've set
-   `DEPLOY_HOST`/`DEPLOY_KEY` in the `Makefile` for your device.
+3. Set `DEPLOY_HOST`/`DEPLOY_KEY` in the `Makefile` (or pass them on the
+   command line) for your device, then:
+   - `make install` — first-time setup: installs the systemd unit, creates
+     `/etc/cloudkey.env` and the web root, enables the service, and deploys.
+   - `make deploy` — every time after: pushes a new binary and dashboard and
+     restarts the service. It expects the unit to already exist, so run
+     `make install` once first.
+
+Both targets act on the remote device over SSH. `make install` is idempotent,
+so re-run it after changing `cloudkey.service`.
 
 At this point, you can choose to back up and overwrite the `/usr/bin/ck-ui`
 file or install the systemd service above, depending on your Linux
@@ -97,8 +93,7 @@ with dashes replaced by underscores, prefixed with `CLOUDKEY_`.
 | --- | --- | --- | --- |
 | `-delay` | `CLOUDKEY_DELAY` | `5000` | Milliseconds each screen stays lit |
 | `-blank-delay` | `CLOUDKEY_BLANK_DELAY` | `3000` | Milliseconds screens stay blanked between screens |
-| `-demo` | `CLOUDKEY_DEMO` | `false` | Use fake screen data instead of network, storage, CPU/memory, and speed-test collection; the framebuffer and LEDs still require target hardware |
-| `-speedtest` | `CLOUDKEY_SPEEDTEST` | `false` | Enable and display the speedtest screen |
+| `-demo` | `CLOUDKEY_DEMO` | `false` | Use fake screen data instead of network, storage, and CPU/memory collection; the framebuffer and LEDs still require target hardware |
 | `-reset-button-cmd` | `CLOUDKEY_RESET_BUTTON_CMD` | `""` | Shell command to run on a single physical reset-button press (empty disables the watcher) |
 | `-pidfile` | `CLOUDKEY_PIDFILE` | `/var/run/cloudkey.pid` | Pidfile path |
 | `-reset` | `CLOUDKEY_RESET` | `false` | Clear the screen and exit, instead of running normally |
@@ -113,13 +108,71 @@ with dashes replaced by underscores, prefixed with `CLOUDKEY_`.
 | `-tailscale` | `CLOUDKEY_TAILSCALE` | `false` | Enable and display the Tailscale screen |
 | `-tailscale-name` | `CLOUDKEY_TAILSCALE_NAME` | `TailScale` | Display name for the Tailscale screen |
 | `-tailscale-cmd` | `CLOUDKEY_TAILSCALE_CMD` | `tailscale` | `tailscale` binary to run for Tailscale status checks; override if it's not on `PATH` |
+| `-http-port` | `CLOUDKEY_HTTP_PORT` | `0` | TCP port for the web dashboard + `/events` SSE stream; `0` disables it. Port 80 needs root or `cap_net_bind_service` |
+| `-web-root` | `CLOUDKEY_WEB_ROOT` | `/usr/share/cloudkey/website` | Directory of dashboard static files served at `/` |
+| `-apps` | `CLOUDKEY_APPS` | `""` | Comma-separated local apps to show on the dashboard, each `name:port` (e.g. `Grafana:3000,Sonarr:8989`); an app is up when its port is LISTENing in any network namespace on this box |
 
 If the wireguard or tailscale screen is enabled but its binary can't be
 found, cloudkey exits at startup with an error rather than silently showing
 "disconnected" forever — a missing dependency is a configuration error to
 fix, not a display state.
 
-### Finding your WireGuard name and interface
+### Web dashboard
+
+Setting `CLOUDKEY_HTTP_PORT` starts an HTTP server that serves the responsive
+web dashboard (the files under `website/`) and a live [Server-Sent Events][sse]
+stream at `/events`. The same collector timers that drive the OLED carousel also
+push their readings to the browser, so the dashboard updates without polling.
+
+The stream is incremental: a browser gets one full snapshot on connect, then
+each timer pushes only its own slice (a WireGuard tick sends just that tunnel, a
+CPU tick just CPU). Tunnels carry live transfer counters and latency where the
+source exposes them — WireGuard rx/tx and handshake age from `wg show <iface>`,
+Tailscale rx/tx from `tailscale status --json`, plus an ICMP ping to the peer.
+The dashboard tunnel cards show RX, TX, and either Ping when connected or Last
+Seen when disconnected.
+
+The `-apps` list adds simple tiles below the tunnels. Each entry is `name:port`
+for an app on the Cloud Key itself. On Linux, cloudkey reads this box's TCP
+LISTEN tables across every network namespace and marks an app up when that port
+is listening; where those tables are unavailable, it falls back to a loopback
+TCP dial. Dashboard links use the same scheme and hostname currently showing
+the dashboard, with only the port changed. Provide as many as you like; names
+may not contain `:` or `,`.
+
+Binding port 80 requires privilege — run as root (the service already does) or
+grant the binary the capability once:
+
+```bash
+sudo setcap cap_net_bind_service=+ep /usr/local/bin/cloudkey
+```
+
+[sse]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
+
+## Boring Details
+
+WireGuard and Tailscale check actual tunnel liveness rather than the
+systemd unit state of the underlying service: `wg-quick@<iface>` is
+typically a one-shot unit that stays "active" forever once `wg-quick up`
+succeeds, and `tailscaled`'s unit reports "active" whenever the daemon
+process is running, neither of which reflects the peer/tailnet actually
+being reachable. So WireGuard status comes from the human-readable
+`wg show <iface>` output (recent handshake age plus transfer counters), and
+Tailscale status comes from `tailscale status --json`'s `BackendState`.
+
+autossh is the exception: `-R` (remote) forwards bind no local port to
+probe, so without a `-M` monitor port there's no local traffic signal to
+check at all. autossh status therefore falls back to `systemctl is-active
+<unit>` — which only proves the autossh/ssh process is still running, not
+that the tunnel is passing traffic. Pair each tunnel's ssh config with
+`ServerAliveInterval`/`ServerAliveCountMax` so a genuinely dead connection
+makes the process exit (and the unit go inactive) instead of hanging open
+indefinitely; without that, a stale tunnel can still show as "up".
+
+After boot, the status LED is blue while the daemon is idle. When
+`-reset-button-cmd` is configured, a physical reset-button press blinks it
+white (a 300ms fade up, 300ms fade down) as acknowledgment, then returns to
+blue.
 
 `CLOUDKEY_WIREGUARD_NAME` is just the label shown as the screen's title —
 pick anything (it defaults to `WireGuard`). `CLOUDKEY_WIREGUARD_IFACE`
@@ -143,7 +196,6 @@ systemctl list-units 'wg-quick@*'
 See [`cloudkey.env.example`](cloudkey.env.example) for a starter `/etc/cloudkey.env`. Example:
 
 ```text
-CLOUDKEY_SPEEDTEST=true
 CLOUDKEY_RESET_BUTTON_CMD=systemctl restart unifi
 ```
 
@@ -162,7 +214,7 @@ Run Unifi on a server, not a "raspberry pi".
 With that said, I am sure you are asking yourself *"Why do you have it all?"*
 The Ubiquity Cloud Key Gen2 is a POE, ARMv7, Single-Board-Computer with
 on-board battery backup and a 160x64 framebuffer display built-in.  It is
-sexy, for under $200. It looks like an iDevice.
+sexy, for under $150. It looks like an iDevice.
 
 Sure, you can buy a $35 Raspberry Pi, add a case, with a touchscreen, with
 a power-supply, and blah blah, but I'll pay for quality and craftmanship so

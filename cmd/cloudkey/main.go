@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"os/signal"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -15,9 +17,11 @@ import (
 	"github.com/tabalt/pidfile"
 
 	"github.com/coreos/pkg/flagutil"
+	"github.com/jnovack/cloudkey/internal/api"
 	"github.com/jnovack/cloudkey/internal/buildversion"
 	"github.com/jnovack/cloudkey/internal/display"
 	_ "github.com/jnovack/cloudkey/internal/fonts"
+	"github.com/jnovack/cloudkey/internal/state"
 	"github.com/jnovack/cloudkey/pkg/resetbutton"
 )
 
@@ -25,6 +29,11 @@ var (
 	opts      display.CmdLineOpts
 	configErr error
 )
+
+// serverShutdownWait bounds how long the signal handler waits for api.Serve to
+// finish draining before exiting anyway. It is deliberately longer than the
+// api package's own shutdownGrace so the drain gets its full budget.
+const serverShutdownWait = 10 * time.Second
 
 func main() {
 	buildversion.Populate()
@@ -56,6 +65,17 @@ func main() {
 		log.Warn().Err(err).Str("pidfile", opts.Pidfile).Msg("failed to create pidfile")
 		pid = nil
 	}
+	// Clear on every normal return, not just the signal path: --reset makes
+	// display.New return early, and without this the process exits leaving a
+	// pidfile naming a PID that no longer exists. Every path that calls
+	// os.Exit — the signal handler, the dashboard server's log.Fatal, and the
+	// log.Fatal below — clears the pidfile itself first, since os.Exit does not
+	// run deferred functions; none of them double-clears with this.
+	defer func() {
+		if pid != nil {
+			_ = pid.Clear()
+		}
+	}()
 
 	if opts.ResetButtonCmd != "" {
 		go func() {
@@ -67,6 +87,39 @@ func main() {
 		}()
 	}
 
+	// hub carries live readings from the display's collector goroutines to any
+	// connected web dashboard. It is created unconditionally and passed to
+	// display.New; the HTTP server that consumes it starts only when a port is
+	// configured, so a display-only deployment is unaffected.
+	hub := state.NewHub()
+
+	// serverCtx is cancelled by the signal handler to shut the HTTP server down
+	// gracefully before the process exits. serverDone is closed once api.Serve
+	// has actually returned, so the handler waits for that drain instead of
+	// calling os.Exit out from under it — without the wait, cancelServer() is
+	// immediately followed by process death and no client is ever closed cleanly.
+	serverCtx, cancelServer := context.WithCancel(context.Background())
+	serverDone := make(chan struct{})
+
+	if opts.HTTPPort > 0 {
+		go func() {
+			defer close(serverDone)
+			cfg := api.Config{Port: opts.HTTPPort, WebRoot: opts.WebRoot, Apps: opts.Apps}
+			if err := api.Serve(serverCtx, hub, cfg); err != nil {
+				// log.Fatal calls os.Exit, which skips main's deferred
+				// pid.Clear — clear here explicitly, the way every other fatal
+				// path in main does.
+				if pid != nil {
+					_ = pid.Clear()
+				}
+				log.Fatal().Err(err).Msg("dashboard http server failed")
+			}
+		}()
+	} else {
+		// No server to wait for; keep the handler's select from blocking.
+		close(serverDone)
+	}
+
 	// Setup Service
 	// https://fabianlee.org/2017/05/21/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-16-04/
 
@@ -75,16 +128,37 @@ func main() {
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		s := <-sigs
+		cancelServer()
+		if !awaitServerShutdown(serverDone, serverShutdownWait) {
+			log.Warn().Msg("dashboard http server did not stop in time")
+		}
 		display.Shutdown()
-		fmt.Printf("Received signal '%s', shutting down\n", s)
-		fmt.Println("Stopping cloudkey service")
+		log.Info().Str("signal", s.String()).Msg("received signal, stopping cloudkey service")
 		if pid != nil {
 			_ = pid.Clear()
 		}
 		os.Exit(0)
 	}()
 
-	display.New(opts)
+	if err := display.New(opts, hub); err != nil {
+		if pid != nil {
+			_ = pid.Clear()
+		}
+		log.Fatal().Err(err).Msg("display initialization failed")
+	}
+}
+
+// awaitServerShutdown blocks until done is closed or timeout elapses,
+// reporting which happened. It exists as a standalone function so the
+// signal handler's wait-with-timeout logic is unit-testable without
+// standing up a real HTTP server.
+func awaitServerShutdown(done <-chan struct{}, timeout time.Duration) bool {
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 // resetButtonBusy is 1 while the configured reset-button command is
@@ -150,7 +224,6 @@ func configureFlags(fs *flag.FlagSet, opts *display.CmdLineOpts) error {
 	fs.Float64Var(&opts.BlankDelay, "blank-delay", 3000, "delay in milliseconds screens stay blanked between screens")
 	fs.BoolVar(&opts.Reset, "reset", false, "reset/clear the screen")
 	fs.BoolVar(&opts.Demo, "demo", false, "use fake data for display only")
-	fs.BoolVar(&opts.SpeedTest, "speedtest", false, "enable and display the speedtest screen")
 	fs.StringVar(&opts.Pidfile, "pidfile", "/var/run/cloudkey.pid", "pidfile")
 	fs.BoolVar(&opts.Version, "version", false, "print version and exit")
 	fs.StringVar(&opts.ResetButtonCmd, "reset-button-cmd", "", "shell command to run on a single physical reset-button press (empty disables)")
@@ -164,5 +237,8 @@ func configureFlags(fs *flag.FlagSet, opts *display.CmdLineOpts) error {
 	fs.BoolVar(&opts.Tailscale, "tailscale", false, "enable and display the Tailscale screen")
 	fs.StringVar(&opts.TailscaleName, "tailscale-name", "TailScale", "display name for the Tailscale screen")
 	fs.StringVar(&opts.TailscaleCmd, "tailscale-cmd", "tailscale", "tailscale binary to run for Tailscale status checks; a bare name resolves via PATH")
+	fs.IntVar(&opts.HTTPPort, "http-port", 0, "TCP port for the web dashboard + SSE API; 0 disables it (binding 80 needs root or cap_net_bind_service)")
+	fs.StringVar(&opts.WebRoot, "web-root", "/usr/share/cloudkey/website", "directory of dashboard static files served at /")
+	fs.StringVar(&opts.Apps, "apps", "", "comma-separated local apps to show on the dashboard, each name:port; liveness comes from TCP LISTEN tables, e.g. \"Grafana:3000,Sonarr:8989\"")
 	return flagutil.SetFlagsFromEnv(fs, "CLOUDKEY")
 }

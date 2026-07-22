@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -31,9 +32,17 @@ func readSample() (sample, error) {
 	if !scanner.Scan() {
 		return sample{}, fmt.Errorf("read /proc/stat: empty file")
 	}
-	fields := strings.Fields(scanner.Text())
+	return parseStat(scanner.Text())
+}
+
+// parseStat parses one "cpu ..." line from /proc/stat (the aggregate line,
+// summed across every core) into idle vs total jiffies. Extracted from
+// readSample as a pure function, mirroring parseLoadAvg's split in this same
+// file, so the field-parsing logic is testable without a real /proc/stat.
+func parseStat(line string) (sample, error) {
+	fields := strings.Fields(line)
 	if len(fields) < 5 || fields[0] != "cpu" {
-		return sample{}, fmt.Errorf("read /proc/stat: unexpected format %q", scanner.Text())
+		return sample{}, fmt.Errorf("read /proc/stat: unexpected format %q", line)
 	}
 
 	var s sample
@@ -72,4 +81,36 @@ func Percent(window time.Duration) (float64, error) {
 	}
 	idleDelta := after.idle - before.idle
 	return (1 - float64(idleDelta)/float64(totalDelta)) * 100, nil
+}
+
+// Cores reports the number of logical CPUs usable by the process. It is a
+// cheap runtime lookup (no /proc read), suited to the web dashboard's static
+// core count.
+func Cores() int {
+	return runtime.NumCPU()
+}
+
+// LoadAverage reports the 1-minute load average from /proc/loadavg. The file's
+// first field is the 1-minute figure; the rest (5/15-minute, running/total
+// procs, last PID) are ignored.
+func LoadAverage() (float64, error) {
+	data, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return 0, fmt.Errorf("read /proc/loadavg: %w", err)
+	}
+	return parseLoadAvg(string(data))
+}
+
+// parseLoadAvg extracts the 1-minute load average (the first whitespace-
+// separated field) from /proc/loadavg content.
+func parseLoadAvg(content string) (float64, error) {
+	fields := strings.Fields(content)
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("parse /proc/loadavg: empty")
+	}
+	v, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse /proc/loadavg: %w", err)
+	}
+	return v, nil
 }

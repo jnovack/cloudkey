@@ -21,14 +21,15 @@ from PIL import Image
 
 
 def convert(src_path: str, dst_path: str) -> None:
-    im = Image.open(src_path).convert("RGBA")
-    px = im.load()
-    out = Image.new("RGBA", im.size, (0, 0, 0, 255))
-    opx = out.load()
-    for y in range(im.height):
-        for x in range(im.width):
-            _, _, _, a = px[x, y]
-            opx[x, y] = (a, a, a, 255)
+    with Image.open(src_path) as im:
+        im = im.convert("RGBA")
+        px = im.load()
+        out = Image.new("RGBA", im.size, (0, 0, 0, 255))
+        opx = out.load()
+        for y in range(im.height):
+            for x in range(im.width):
+                _, _, _, a = px[x, y]
+                opx[x, y] = (a, a, a, 255)
     out.save(dst_path)
 
 

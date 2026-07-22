@@ -1,11 +1,17 @@
+// Package leds controls the Cloud Key's status LEDs by writing the Linux
+// sysfs led-class attributes under /sys/class/leds/<name>, so the display
+// package can signal boot/running/reset state without shelling out. Writes
+// are best-effort: on non-target hardware the sysfs paths are absent, so
+// failures are logged (at debug) and never fatal.
 package leds
 
 import (
-	"log"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // https://scene-si.org/2016/07/19/building-your-own-build-status-indicator-with-golang-and-rpi3/
@@ -28,10 +34,12 @@ func (r LED) read(where string) ([]byte, error) {
 
 // write sets a sysfs attribute for the led. Writes are best-effort: the sysfs
 // path may not exist on non-target hardware, so failures are logged, not fatal.
+// Logged at debug because off-device this fires on literally every LED call —
+// promoting it to warn would drown the log on any dev machine.
 func (r LED) write(where, what string) LED {
 	filename := r.filename() + "/" + where
 	if err := os.WriteFile(filename, []byte(what), 0666); err != nil {
-		log.Printf("led write %s: %v", filename, err)
+		log.Debug().Err(err).Str("file", filename).Msg("led write")
 	}
 	return r
 }
@@ -41,7 +49,7 @@ func (r LED) On() LED {
 	r.write("trigger", "none")
 	max, err := r.read("max_brightness")
 	if err != nil {
-		log.Printf("led read max_brightness: %v", err)
+		log.Debug().Err(err).Str("led", r.name).Msg("led read max_brightness")
 		return r
 	}
 	return r.write("brightness", strings.TrimSuffix(string(max), "\n"))
@@ -59,17 +67,26 @@ func (r LED) Brightness(i int) LED {
 	return r.write("brightness", strconv.Itoa(i))
 }
 
+// parseBrightness parses a sysfs brightness attribute's raw contents (a
+// decimal integer, typically newline-terminated) into an int. Shared by
+// currentBrightness and FadeIn, the two call sites that read a brightness
+// value out of sysfs, so the trim-then-parse behavior only needs testing
+// once.
+func parseBrightness(b []byte) (int, error) {
+	return strconv.Atoi(strings.TrimSpace(string(b)))
+}
+
 // currentBrightness reads the led's live brightness value from sysfs, the
 // starting point for a fade.
 func (r LED) currentBrightness() int {
 	b, err := r.read("brightness")
 	if err != nil {
-		log.Printf("led read brightness: %v", err)
+		log.Debug().Err(err).Str("led", r.name).Msg("led read brightness")
 		return 0
 	}
-	v, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	v, err := parseBrightness(b)
 	if err != nil {
-		log.Printf("led parse brightness: %v", err)
+		log.Debug().Err(err).Str("led", r.name).Msg("led parse brightness")
 		return 0
 	}
 	return v
@@ -94,12 +111,12 @@ func (r LED) fade(target int, duration time.Duration) LED {
 func (r LED) FadeIn(duration time.Duration) LED {
 	max, err := r.read("max_brightness")
 	if err != nil {
-		log.Printf("led read max_brightness: %v", err)
+		log.Debug().Err(err).Str("led", r.name).Msg("led read max_brightness")
 		return r
 	}
-	target, err := strconv.Atoi(strings.TrimSpace(string(max)))
+	target, err := parseBrightness(max)
 	if err != nil {
-		log.Printf("led parse max_brightness: %v", err)
+		log.Debug().Err(err).Str("led", r.name).Msg("led parse max_brightness")
 		return r
 	}
 	return r.fade(target, duration)

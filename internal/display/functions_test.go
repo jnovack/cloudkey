@@ -6,6 +6,26 @@ import (
 	"time"
 )
 
+// TestTextWidthReturnsNotOkForUnregisteredFont guards against a regression to
+// the pre-fix behavior, where fonts.Load("no-such-font") returned nil and
+// truetype.NewFace nil-dereferenced inside textWidth, panicking whatever
+// redraw goroutine called center or drawIconRows with an unregistered font.
+func TestTextWidthReturnsNotOkForUnregisteredFont(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("textWidth panicked for unregistered font: %v", r)
+		}
+	}()
+
+	width, ok := textWidth("hello", 16, "no-such-font")
+	if ok {
+		t.Errorf("textWidth(unregistered font) ok = true, want false")
+	}
+	if width != 0 {
+		t.Errorf("textWidth(unregistered font) width = %d, want 0", width)
+	}
+}
+
 func TestPixelShift(t *testing.T) {
 	epoch := time.Unix(0, 0).UTC()
 

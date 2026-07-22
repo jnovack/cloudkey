@@ -6,6 +6,10 @@ To the extent possible under law, the author(s) have dedicated all copyright and
 You should have received a copy of the CC0 Public Domain Dedication along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 */
 
+// Package framebuffer opens a Linux /dev/fb* device and exposes it as a
+// draw.Image backed by an mmap'd region, so callers can render with the
+// standard image/draw package. Consumed by internal/display to drive the
+// Cloud Key's OLED panel.
 package framebuffer
 
 import (
@@ -181,6 +185,12 @@ func Open(name string) (draw.Image, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The mmap below keeps the mapping valid after the descriptor is closed, so
+	// the fd is released unconditionally on the way out rather than held for the
+	// life of the process. Every error return between here and there would
+	// otherwise abandon it.
+	defer file.Close()
+
 	var fixInfo FixScreenInfo
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, file.Fd(), FBIOGET_FSCREENINFO, uintptr(unsafe.Pointer(&fixInfo))); errno != 0 {
 		return nil, &os.SyscallError{Syscall: "SYS_IOCTL", Err: errno}
@@ -199,6 +209,17 @@ func Open(name string) (draw.Image, error) {
 	if err != nil {
 		return nil, err
 	}
+	// From here on, any return that does NOT hand the mapping to a draw.Image
+	// must release it, or the process keeps the framebuffer mapped for nothing.
+	ok := false
+	defer func() {
+		if !ok {
+			_ = syscall.Munmap(mmap)
+		}
+	}()
+
+	rect := image.Rect(0, 0, int(varInfo.Xres), int(varInfo.Yres)).Add(image.Point{int(varInfo.Xoffset), int(varInfo.Yoffset)})
+
 	switch varInfo.Bits_per_pixel {
 	case 32:
 		if varInfo.Blue.Length != 8 {
@@ -220,9 +241,11 @@ func Open(name string) (draw.Image, error) {
 			return nil, UnsupportedError("varInfo.Red.Offset != 16")
 		}
 		if varInfo.Transp.Length == 0 {
-			return &BGR32{mmap, int(fixInfo.Line_length), image.Rect(0, 0, int(varInfo.Xres), int(varInfo.Yres)).Add(image.Point{int(varInfo.Xoffset), int(varInfo.Yoffset)})}, nil
+			ok = true
+			return &BGR32{mmap, int(fixInfo.Line_length), rect}, nil
 		} else if varInfo.Transp.Length == 8 && varInfo.Transp.Offset == 24 {
-			return &NBGRA{mmap, int(fixInfo.Line_length), image.Rect(0, 0, int(varInfo.Xres), int(varInfo.Yres)).Add(image.Point{int(varInfo.Xoffset), int(varInfo.Yoffset)})}, nil
+			ok = true
+			return &NBGRA{mmap, int(fixInfo.Line_length), rect}, nil
 		}
 	case 24:
 		if varInfo.Blue.Length != 8 {
@@ -246,7 +269,8 @@ func Open(name string) (draw.Image, error) {
 		if varInfo.Transp.Length != 0 {
 			return nil, UnsupportedError("varInfo.Transp.Length != 0")
 		}
-		return &BGR{mmap, int(fixInfo.Line_length), image.Rect(0, 0, int(varInfo.Xres), int(varInfo.Yres)).Add(image.Point{int(varInfo.Xoffset), int(varInfo.Yoffset)})}, nil
+		ok = true
+		return &BGR{mmap, int(fixInfo.Line_length), rect}, nil
 	case 16:
 		if varInfo.Blue.Length != 5 {
 			return nil, UnsupportedError("varInfo.Blue.Length != 5")
@@ -269,7 +293,8 @@ func Open(name string) (draw.Image, error) {
 		if varInfo.Transp.Length != 0 {
 			return nil, UnsupportedError("varInfo.Transp.Length != 0")
 		}
-		return &BGR565{mmap, int(fixInfo.Line_length), image.Rect(0, 0, int(varInfo.Xres), int(varInfo.Yres)).Add(image.Point{int(varInfo.Xoffset), int(varInfo.Yoffset)})}, nil
+		ok = true
+		return &BGR565{mmap, int(fixInfo.Line_length), rect}, nil
 	}
 	return nil, UnsupportedError("unsupported pixel format")
 }
