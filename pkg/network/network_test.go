@@ -1,8 +1,13 @@
 package network
 
 import (
+	"context"
+	"errors"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestIsLANInterface(t *testing.T) {
@@ -73,4 +78,89 @@ func TestFirstIPv4(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withWANIPEndpoint points WANIP at srv for the duration of the test,
+// restoring the real ipify endpoint on cleanup.
+func withWANIPEndpoint(t *testing.T, srv *httptest.Server) {
+	t.Helper()
+	prev := wanIPEndpoint
+	wanIPEndpoint = srv.URL
+	t.Cleanup(func() { wanIPEndpoint = prev })
+}
+
+func TestWANIP(t *testing.T) {
+	t.Run("returns the body when it is a valid IP", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("203.0.113.32"))
+		}))
+		defer srv.Close()
+		withWANIPEndpoint(t, srv)
+
+		got, err := WANIP(t.Context())
+		if err != nil {
+			t.Fatalf("WANIP() error = %v", err)
+		}
+		if got != "203.0.113.32" {
+			t.Errorf("WANIP() = %q, want %q", got, "203.0.113.32")
+		}
+	})
+
+	t.Run("errors on non-200 status", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		defer srv.Close()
+		withWANIPEndpoint(t, srv)
+
+		if _, err := WANIP(t.Context()); err == nil {
+			t.Error("WANIP() error = nil, want error for 503 status")
+		}
+	})
+
+	t.Run("errors when the body is not an IP", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("<html>rate limited</html>"))
+		}))
+		defer srv.Close()
+		withWANIPEndpoint(t, srv)
+
+		if _, err := WANIP(t.Context()); err == nil {
+			t.Error("WANIP() error = nil, want error for non-IP body")
+		}
+	})
+
+	// Regression test for #3: WANIP previously called go-ipify, which had no
+	// way to bound or cancel its request — a dead WAN link left it blocked
+	// indefinitely. A slow server plus a short context timeout now must make
+	// WANIP return within the timeout instead of waiting for the server.
+	t.Run("respects context timeout instead of blocking on a slow server", func(t *testing.T) {
+		unblock := make(chan struct{})
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			<-unblock
+			w.Write([]byte("203.0.113.32"))
+		}))
+		// srv.Close() waits for the in-flight handler to return, so unblock
+		// must close first — deferred after srv.Close(), it runs first (LIFO).
+		defer srv.Close()
+		defer close(unblock)
+		withWANIPEndpoint(t, srv)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
+
+		start := time.Now()
+		_, err := WANIP(ctx)
+		elapsed := time.Since(start)
+
+		if err == nil {
+			t.Fatal("WANIP() error = nil, want context deadline exceeded")
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("WANIP() error = %v, want wrapping context.DeadlineExceeded", err)
+		}
+		if elapsed > 2*time.Second {
+			t.Errorf("WANIP() took %v, want it bounded by the context timeout", elapsed)
+		}
+	})
 }

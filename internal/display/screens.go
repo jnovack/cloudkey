@@ -1,6 +1,7 @@
 package display
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/draw"
@@ -25,6 +26,12 @@ import (
 // storageWarnThreshold is the percent-used a mount must exceed before
 // drawStorageRow draws its warning icon.
 const storageWarnThreshold = 90.0
+
+// wanIPTimeout bounds a single network.WANIP round-trip in buildNetwork's
+// hourly refresh, so a dead internet connection fails that iteration within
+// seconds rather than leaving the goroutine blocked for the full interval
+// between refreshes.
+const wanIPTimeout = 10 * time.Second
 
 // formatGB renders bytes as a decimal GB value with exactly 3 significant
 // digits (e.g. "9.87GB", "23.4GB", "897GB") - enough precision to be useful
@@ -385,6 +392,12 @@ func buildHost(opts CmdLineOpts) draw.Image {
 // fadeStep). The LAN address is resolved synchronously for the first frame (a
 // cheap local lookup); the WAN address shows "checking..." until the first
 // round-trip returns, rather than a placeholder that looks like a real address.
+//
+// The WAN lookup is bounded by wanIPTimeout so a dead internet connection
+// fails that iteration within seconds instead of leaving the round-trip
+// outstanding for the full hour between refreshes; on failure the screen
+// shows "unreachable" rather than a stale address that would otherwise look
+// current.
 func buildNetwork(opts CmdLineOpts) draw.Image {
 	screen := image.NewRGBA(fb.Bounds())
 	lan := "checking..."
@@ -409,9 +422,15 @@ func buildNetwork(opts CmdLineOpts) draw.Image {
 			if l, err := network.LANIP(); err == nil && l != "" {
 				lan = l
 			}
-			if w, err := network.WANIP(); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), wanIPTimeout)
+			w, err := network.WANIP(ctx)
+			cancel()
+			if err == nil {
 				log.Info().Str("wan_ip", w).Msg("found external IP address")
 				wan = w
+			} else {
+				log.Warn().Err(err).Msg("failed to resolve external IP address")
+				wan = "unreachable"
 			}
 			screenMu.Lock()
 			drawNetwork(screen, lan, wan)

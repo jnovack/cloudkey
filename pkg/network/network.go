@@ -1,14 +1,15 @@
 // Package network reports the device's LAN and WAN IPv4 addresses, so the
 // display and web layers can show them. LAN detection is local (net.Interfaces);
-// the WAN address requires an outbound round-trip via ipify.
+// the WAN address requires an outbound round-trip to ipify.
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
-
-	ipify "github.com/rdegges/go-ipify"
+	"net/http"
 )
 
 // LANIP gives you the first non-loopback IPv4 address of a real LAN adapter.
@@ -75,11 +76,43 @@ func firstIPv4(addrs []net.Addr) string {
 	return ""
 }
 
-// WANIP gives you your WAN IP of the device
-func WANIP() (string, error) {
-	ip, err := ipify.GetIp()
+// wanIPEndpoint is queried by WANIP for this device's public IPv4 address.
+// It's a var, not a const, so tests can point it at a local httptest server.
+var wanIPEndpoint = "https://api.ipify.org"
+
+// wanIPClient is reused across calls so repeated invocations (buildNetwork's
+// hourly refresh) can pool TCP/TLS connections instead of dialing fresh each
+// time.
+var wanIPClient = &http.Client{}
+
+// WANIP gives you your WAN IP of the device. ctx bounds the round trip —
+// callers should attach a timeout, since a dead WAN link otherwise leaves the
+// underlying HTTP request outstanding indefinitely (this replaced go-ipify,
+// which offered no way to bound or cancel the request).
+func WANIP(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wanIPEndpoint, nil)
+	if err != nil {
+		return "", fmt.Errorf("build ipify request: %w", err)
+	}
+
+	resp, err := wanIPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("query ipify: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("query ipify: unexpected status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read ipify response: %w", err)
+	}
+
+	ip := string(body)
+	if net.ParseIP(ip) == nil {
+		return "", fmt.Errorf("query ipify: invalid ip %q", ip)
 	}
 	return ip, nil
 }
