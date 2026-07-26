@@ -1,0 +1,51 @@
+name: Publish Wiki
+# Mirrors wiki/ into the repo's GitHub wiki. The wiki is a separate git repo
+# (cloudkey.wiki.git) that GitHub's web editor can also write to — this workflow
+# force-pushes, so wiki/ in this repo is the single source of truth and any edit
+# made in the web UI is overwritten on the next push to main. Edit the files here.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "wiki/**"
+      - ".github/workflows/wiki.yml"
+  workflow_dispatch:
+
+# Serialize: two concurrent runs would race on the same force-push.
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+
+      - name: Push wiki/ to the GitHub wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" \
+            wiki-repo
+          # Replace the tracked page set wholesale so deletions propagate, but
+          # keep .git so this stays an ordinary commit on the wiki's history.
+          find wiki-repo -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp wiki/*.md wiki-repo/
+          cd wiki-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date"
+            exit 0
+          fi
+          git commit -m "docs(wiki): sync from ${GITHUB_SHA::7}"
+          git push

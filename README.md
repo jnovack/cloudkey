@@ -25,6 +25,31 @@ Web Dashboard (opt-in, see -http-port below)
 
 ![Dashboard, full](docs/screenshots/dashboard02.png)
 
+## The Cloud Key Runbook
+
+cloudkey replaces the front panel. The
+**[wiki](https://github.com/jnovack/cloudkey/wiki)** covers everything else —
+a phase-by-phase runbook for turning a Cloud Key Gen2 / Gen2 Plus into a
+plain Debian server and building on it. Verified on real hardware, written
+so a stranger can follow along, and paired with ready-to-run scripts in
+[`scripts/runbook/`](scripts/runbook/).
+
+| Phase | What it gets you |
+| --- | --- |
+| [1 — De-Ubiquitizing](https://github.com/jnovack/cloudkey/wiki/Phase-1-De-Ubiquitizing) | Strip the UniFi stack (keeping the packages that must stay), install cloudkey in place of `ck-ui`, format and mount the internal drive, harden to an admin user with key-only SSH |
+| [2 — Apps](https://github.com/jnovack/cloudkey/wiki/Phase-2-Apps) | NZBGet, Sonarr, Radarr, Prowlarr on ARM, plus [hardening](https://github.com/jnovack/cloudkey/wiki/Phase-2-Hardening) — SQLite healing, liveness probes, surviving upgrades |
+| [3 — AutoSSH](https://github.com/jnovack/cloudkey/wiki/Phase-3-AutoSSH) | A reverse-SSH rescue tunnel through a relay, so you can still reach the box when the network moves out from under it (feeds the autossh screen above); [macOS variant](https://github.com/jnovack/cloudkey/wiki/macOS-AutoSSH) included |
+| [4 — WireGuard](https://github.com/jnovack/cloudkey/wiki/Phase-4-WireGuard) | Fail-closed VPN egress using a network namespace — apps get no route at all if the tunnel drops, plus health checks and self-healing (feeds the wireguard screen) |
+| [5 — Headscale](https://github.com/jnovack/cloudkey/wiki/Phase-5-Headscale) | A self-hosted Headscale + headplane control server and client enrolment, including a [Synology NAS](https://github.com/jnovack/cloudkey/wiki/Tailscale-for-Synology) (feeds the tailscale screen) |
+| [9 — Backup & Restore](https://github.com/jnovack/cloudkey/wiki/Phase-9-Backup-Restore) | Back every custom file up to the SD card and put it back on a rebuilt box |
+
+Also there: [CloudKey Admin Tools](https://github.com/jnovack/cloudkey/wiki/CloudKey-Admin-Tools),
+an on-box status dashboard and diagnostic runbook that works across every phase.
+
+Wiki pages are edited in [`wiki/`](wiki/) in this repo and published by CI —
+so send wiki fixes as a pull request, not through the wiki's web editor
+(those edits get overwritten).
+
 ## Installation
 
 ### Quick Start

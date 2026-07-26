@@ -1,0 +1,8 @@
+[Unit]
+Description=Watch for pending media-incoming-sync triggers
+
+[Path]
+DirectoryNotEmpty=/run/media-incoming-sync
+
+[Install]
+WantedBy=multi-user.target

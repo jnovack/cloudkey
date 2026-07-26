@@ -1,0 +1,21 @@
+[Unit]
+Description=Sync Sonarr/Radarr libraries to a remote media server (triggered by media-incoming-sync.path)
+
+# A season-pack import can fire many trigger files within seconds, each
+# of which starts this unit if it isn't already active. Only one of
+# those actually mounts/rsyncs (the rest find the trigger dir already
+# emptied and exit near-instantly), but they still count as starts
+# against systemd's default rate limit (5 per 10s) -- easily tripped by
+# a burst, which would leave the .path unit in a permanent failed state
+# until `systemctl reset-failed`. Widened generously since a start here
+# is cheap, not because runaway restarts are expected.
+StartLimitIntervalSec=60
+StartLimitBurst=30
+
+[Service]
+Type=oneshot
+# No EnvironmentFile= here on purpose: the script sources
+# /etc/media-incoming-sync.env itself, so a manual run (troubleshooting,
+# --verify) picks up the same config without systemd in the loop at all.
+# Setting it here too would just be a second place for the path to drift.
+ExecStart=/usr/local/sbin/media-incoming-sync.sh
