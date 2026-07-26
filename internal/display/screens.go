@@ -651,6 +651,18 @@ func drawVPNStatus(screen draw.Image, name string, up bool) {
 	drawIconRows(screen, []iconTextRow{{icon: icon, text: text, bold: up}}, 40, 0, 16, "lato-regular")
 }
 
+// drawStealth renders the banner shown for stealthBannerHold as stealth mode
+// engages, borrowing vpnTitleSize so it reads as the same family of screen.
+//
+// Unlike every other draw* in this file it has no build func and is not in the
+// carousel registry — it is a one-off acknowledgment enterStealth allocates on
+// demand, not a screen in the rotation.
+func drawStealth(screen draw.Image) {
+	draw.Draw(screen, screen.Bounds(), image.Black, image.Point{}, draw.Src)
+	center(screen, "Stealth Mode", 4, vpnTitleSize, "lato-regular", false)
+	center(screen, "ENGAGED", 34, vpnTitleSize, "lato-regular", true)
+}
+
 // wgStat runs one WireGuard status check, logging and returning a zero (down)
 // Status on error so both the panel and the hub degrade to "disconnected"
 // rather than propagating an error a redraw loop can't surface.

@@ -6,6 +6,29 @@ import (
 	"time"
 )
 
+// TestStartFadeCarouselReturnsWhenNoScreensEnabled guards the empty-slice
+// guard. The carousel indexes screens with a modulo, which panics on an empty
+// slice, and the range-based loop this replaced degenerated into a tight spin
+// that burned a core. Returning is the only safe option left, and it is also
+// what makes the loop testable at all — every other path blocks forever.
+func TestStartFadeCarouselReturnsWhenNoScreensEnabled(t *testing.T) {
+	prev := screens
+	t.Cleanup(func() { screens = prev })
+	screens = nil
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		startFadeCarousel(1, 1)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("startFadeCarousel did not return with no screens enabled")
+	}
+}
+
 // TestTextWidthReturnsNotOkForUnregisteredFont guards against a regression to
 // the pre-fix behavior, where fonts.Load("no-such-font") returned nil and
 // truetype.NewFace nil-dereferenced inside textWidth, panicking whatever

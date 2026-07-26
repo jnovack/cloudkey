@@ -94,7 +94,7 @@ with dashes replaced by underscores, prefixed with `CLOUDKEY_`.
 | `-delay` | `CLOUDKEY_DELAY` | `5000` | Milliseconds each screen stays lit |
 | `-blank-delay` | `CLOUDKEY_BLANK_DELAY` | `3000` | Milliseconds screens stay blanked between screens |
 | `-demo` | `CLOUDKEY_DEMO` | `false` | Use fake screen data instead of network, storage, and CPU/memory collection; the framebuffer and LEDs still require target hardware |
-| `-reset-button-cmd` | `CLOUDKEY_RESET_BUTTON_CMD` | `""` | Shell command to run on a single physical reset-button press (empty disables the watcher) |
+| `-stealth-mode` | `CLOUDKEY_STEALTH_MODE` | `false` | Start with the front panel dark — no LEDs, no screens. A brief reset-button tap toggles it at runtime; see [Stealth mode](#stealth-mode) |
 | `-pidfile` | `CLOUDKEY_PIDFILE` | `/var/run/cloudkey.pid` | Pidfile path |
 | `-reset` | `CLOUDKEY_RESET` | `false` | Clear the screen and exit, instead of running normally |
 | `-version` | `CLOUDKEY_VERSION` | `false` | Print version and exit |
@@ -149,6 +149,32 @@ sudo setcap cap_net_bind_service=+ep /usr/local/bin/cloudkey
 
 [sse]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
 
+### Stealth mode
+
+The cloudkey daemon always drives the front panel: boot logo, loader animation,
+a steady blue "running" LED, and the OLED carousel rotating forever. There is no
+way to make the device go dark — useful when the box sits in a bedroom or any
+shared space where a glowing panel is unwanted.
+
+`CLOUDKEY_STEALTH_MODE` (default `false`) suppresses **all** front-panel
+output — LEDs and OLED both — toggled at runtime by a physical reset-button
+tap. Engaging shows a `Stealth Mode / ENGAGED` banner for 5 seconds so you know
+the press registered, then the panel goes fully dark. Disengaging is a silent
+resume: LEDs return and the carousel restarts mid-rotation, no banner.
+
+Stealth is display-only. The collector timers and the web dashboard / SSE stream
+keep running untouched — a dark panel must not mean a dead device.
+
+Two things worth knowing before you go looking for a bug:
+
+- **The tap has to be brief** — roughly a tenth to half a second. A longer hold
+  lands in a different press band and does nothing at all, which is easy to
+  mistake for a broken button. The band cloudkey classified each press into is
+  logged, so check the journal if a press seems ignored.
+- **The flip is not persisted.** Restarting the service returns to whatever
+  `CLOUDKEY_STEALTH_MODE` says, so set it there if you want dark to be the
+  default.
+
 ## Boring Details
 
 WireGuard and Tailscale check actual tunnel liveness rather than the
@@ -169,10 +195,16 @@ that the tunnel is passing traffic. Pair each tunnel's ssh config with
 makes the process exit (and the unit go inactive) instead of hanging open
 indefinitely; without that, a stale tunnel can still show as "up".
 
-After boot, the status LED is blue while the daemon is idle. When
-`-reset-button-cmd` is configured, a physical reset-button press blinks it
-white (a 300ms fade up, 300ms fade down) as acknowledgment, then returns to
-blue.
+The blue and white LEDs are one status indicator, not two: white alone means
+powered but not running (during boot, and after the service stops), blue alone
+means running. After boot the status LED is therefore blue while the daemon is
+idle. In stealth mode both are dark, including on shutdown — see
+[Stealth mode](#stealth-mode).
+
+The reset button is read as a plain evdev key and classified by how long it was
+held, measured key-down to key-up. Only a brief tap does anything today; the
+longer bands are reserved and deliberately separated by dead zones, so releasing
+between bands is always a safe no-op. Nothing fires past six seconds.
 
 `CLOUDKEY_WIREGUARD_NAME` is just the label shown as the screen's title —
 pick anything (it defaults to `WireGuard`). `CLOUDKEY_WIREGUARD_IFACE`
@@ -196,7 +228,7 @@ systemctl list-units 'wg-quick@*'
 See [`cloudkey.env.example`](cloudkey.env.example) for a starter `/etc/cloudkey.env`. Example:
 
 ```text
-CLOUDKEY_RESET_BUTTON_CMD=systemctl restart unifi
+CLOUDKEY_STEALTH_MODE=true
 ```
 
 ## Why?

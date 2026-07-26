@@ -1,8 +1,20 @@
-// Package resetbutton reads the physical front-panel reset button as a
-// plain evdev key while the OS is running. It is completely independent of
-// the board's hold-10-seconds-at-boot factory-reset path, which lives in
-// the bootloader and runs before Linux — and this process — ever starts;
-// nothing here can see or interfere with it.
+// Package resetbutton reads the physical front-panel reset button as a plain
+// evdev key while the OS is running, classifying each completed press into a
+// Band the caller acts on.
+//
+// What is known, measured on a live UCK-G2: at runtime the kernel exposes this
+// button only through evdev (gpio-keys, Handlers=event1, no EV_REP), cloudkey is
+// the sole holder of that device node, and GPIO 93 is claimed by the gpio-keys
+// driver — so userspace cannot reach the line by any other route. Nothing else
+// on the running system can observe the button.
+//
+// What is assumed: those observations only cover Linux. A hold path implemented
+// below it — in the bootloader, a PMIC, or a separate microcontroller — would be
+// invisible to all of them and cannot be ruled out from userspace. Both a
+// documented hold-at-boot factory reset and an operator report of a destructive
+// long hold at runtime fit that shape, so this package treats such a path as
+// real: no band extends past six seconds. See classify in band.go for why that
+// ceiling is load-bearing rather than arbitrary.
 package resetbutton
 
 import (
@@ -10,7 +22,13 @@ import (
 	"io"
 	"math/bits"
 	"os"
+	"time"
 )
+
+// now is the clock this package measures press durations against. It is a var
+// only so tests can drive a scripted clock instead of sleeping for real band
+// durations; nothing in production reassigns it.
+var now = time.Now
 
 // device is this board's gpio-keys reset button. Confirmed via
 // /sys/firmware/devicetree/base/gpio_keys/reset (label "reset", GPIO 93,
@@ -21,9 +39,11 @@ import (
 const device = "/dev/input/event1"
 
 const (
-	evKey   = 1     // struct input_event.type for a key/button event
-	btnCode = 0x100 // BTN_0 - this board's device-tree linux,code for "reset"
-	keyUp   = 0     // struct input_event.value on release (1 = press, 2 = autorepeat)
+	evKey     = 1     // struct input_event.type for a key/button event
+	btnCode   = 0x100 // BTN_0 - this board's device-tree linux,code for "reset"
+	keyUp     = 0     // struct input_event.value on release
+	keyDown   = 1     // struct input_event.value on press
+	keyRepeat = 2     // struct input_event.value on autorepeat
 )
 
 // rawEvent holds the fields of struct input_event that Watch actually cares
@@ -67,32 +87,70 @@ func readEvent(r io.Reader) (rawEvent, error) {
 	}, nil
 }
 
+// isPress reports whether e is the reset button's key-down transition, which
+// starts the duration this package measures. Autorepeat (keyRepeat) is
+// deliberately not a press: restarting the clock on every repeat would cap
+// every hold at one repeat interval and collapse the bands into each other.
+// This board reports no EV_REP so autorepeat should never arrive, but the guard
+// costs nothing and the failure it prevents is silent.
+func isPress(e rawEvent) bool {
+	return e.Type == evKey && e.Code == btnCode && e.Value == keyDown
+}
+
 // isRelease reports whether e is the reset button's key-up transition - the
-// only transition Watch acts on. A press (key-down) or autorepeat event on
-// the same button, or any event from another key, is not a "press" in the
-// sense this package cares about.
+// transition that ends a press and triggers classification. An event from
+// another key is not a release in the sense this package cares about.
 func isRelease(e rawEvent) bool {
 	return e.Type == evKey && e.Code == btnCode && e.Value == keyUp
 }
 
-// Watch opens the reset button's input device and calls onPress once for
-// every complete press-then-release while it's running - a single
-// momentary press, nothing more. It blocks until reading the device fails
-// (e.g. the device node disappears), and returns that error.
-func Watch(onPress func()) error {
+// Watch opens the reset button's input device and calls onBand once for every
+// completed press that lands in a real band. It blocks until reading the device
+// fails (e.g. the device node disappears), and returns that error.
+//
+// onBand runs on Watch's goroutine, so a slow callback delays the next press.
+// Callers that do anything more than signal should hand off to their own
+// goroutine.
+func Watch(onBand func(Band)) error {
 	f, err := os.Open(device)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
+	return watchReader(f, onBand)
+}
+
+// watchReader is Watch's event loop, split out from the device open so it can
+// be tested against a synthetic event stream without the hardware.
+//
+// The duration is measured between the key-down and key-up events rather than
+// with timers running while the button is held, because nothing yet gives
+// feedback mid-hold - the band is only needed once the press is over. Adding
+// live feedback (LEDs that show which band you are currently in) is what forces
+// the read into its own goroutine with band-boundary timers; until then that
+// machinery would have no consumer.
+//
+// A release with no matching press is ignored rather than treated as a
+// zero-length press: the button may already be held when the device is opened,
+// and a phantom sub-debounce press is a confusing thing to log.
+func watchReader(r io.Reader, onBand func(Band)) error {
+	var down time.Time
+	var held bool
+
 	for {
-		e, err := readEvent(f)
+		e, err := readEvent(r)
 		if err != nil {
 			return err
 		}
-		if isRelease(e) {
-			onPress()
+		switch {
+		case isPress(e):
+			down, held = now(), true
+		case isRelease(e) && held:
+			held = false
+			if b := classify(now().Sub(down)); b != BandNone {
+				onBand(b)
+			}
 		}
 	}
 }

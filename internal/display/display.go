@@ -74,7 +74,7 @@ type CmdLineOpts struct {
 	Demo                  bool
 	Version               bool
 	Pidfile               string
-	ResetButtonCmd        string
+	StealthMode           bool
 	AutoSSHTunnel1Name    string
 	AutoSSHTunnel1Service string
 	AutoSSHTunnel2Name    string
@@ -149,8 +149,7 @@ func animateBootLoader() {
 		time.Sleep(time.Duration(r.Intn(50)) * time.Millisecond)
 	}
 
-	myLeds.LED("blue").On()
-	myLeds.LED("white").Off()
+	ledsRunning()
 }
 
 // New opens the framebuffer and initializes the screens. Call it after any
@@ -170,6 +169,10 @@ func animateBootLoader() {
 func New(opts CmdLineOpts, h *state.Hub) error {
 	hub = h
 
+	// Set before the first LED write or draw below, so a stealth boot never
+	// lights the panel at all — not even briefly for the logo.
+	stealthOn.Store(opts.StealthMode)
+
 	if err := openFramebuffer(); err != nil {
 		return fmt.Errorf("open framebuffer: %w", err)
 	}
@@ -180,18 +183,34 @@ func New(opts CmdLineOpts, h *state.Hub) error {
 	}
 
 	myLeds = leds.LEDS{}
-	myLeds.LED("blue").Off()
-	myLeds.LED("white").On()
+	// A stealth boot must actively darken the LEDs rather than merely skip
+	// lighting them: they hold whatever state the previous run (or Shutdown)
+	// left behind, so "don't touch them" leaves the panel lit.
+	if stealthOn.Load() {
+		ledsDark()
+	} else {
+		ledsBooting()
+	}
 
+	// Always clear, stealth or not — the panel keeps its last contents across a
+	// restart, so skipping this would leave a stale frame lit in stealth.
 	clearScreen()
-	draw.Draw(fb, image.Rect(64, 4, 64+32, 4+32), images.Load("logo"), image.Point{}, draw.Src)
-	center(fb, buildversion.Version, 40, 8, "lato-regular", false)
 
-	animateBootLoader()
+	// The logo, version, and loader bar are front-panel theatre; a stealth boot
+	// skips them outright rather than drawing them and hoping nobody looks.
+	withPanel(func() {
+		draw.Draw(fb, image.Rect(64, 4, 64+32, 4+32), images.Load("logo"), image.Point{}, draw.Src)
+		center(fb, buildversion.Version, 40, 8, "lato-regular", false)
+		animateBootLoader()
+	})
 
 	// Build every screen enabled for these opts, in registry order. Adding a
 	// screen means writing its build func and calling registerScreen (see
 	// screens.go's init()) — nothing here needs to change.
+	//
+	// Screens are built even in stealth mode: their collector goroutines are
+	// what feed the state hub, and stealth darkens the panel without taking the
+	// web dashboard down with it.
 	screens = make([]draw.Image, 0, len(registry))
 	for _, sb := range registry {
 		if !sb.enabled(opts) {
@@ -210,21 +229,10 @@ func New(opts CmdLineOpts, h *state.Hub) error {
 // panel still shows the box is powered even though the cloudkey service
 // itself has stopped — a fully dark panel is indistinguishable from the
 // device being off.
+//
+// In stealth mode that reasoning inverts: a dark panel is precisely what was
+// asked for, and lighting white on the way out would undo it at the one moment
+// nobody is watching to press the button again. Hence the gate.
 func Shutdown() {
-	myLeds.LED("blue").Off()
-	myLeds.LED("white").On()
-}
-
-// BlinkResetAck acknowledges a physical reset-button press by swapping the
-// status indicator from its steady blue to a single white pulse (300ms
-// fade up, 300ms fade down), then back to blue — the steady running state
-// animateBootLoader leaves it in once boot completes. To the user the
-// blue/white LEDs read as one status indicator, so the blue "ready" light
-// must actually go dark while white pulses, not just sit lit underneath it.
-func BlinkResetAck() {
-	white := myLeds.LED("white")
-	myLeds.LED("blue").Off()
-	white.FadeIn(300 * time.Millisecond)
-	white.FadeOut(300 * time.Millisecond)
-	myLeds.LED("blue").On()
+	withPanel(ledsBooting)
 }

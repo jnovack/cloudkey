@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -77,15 +76,25 @@ func main() {
 		}
 	}()
 
-	if opts.ResetButtonCmd != "" {
-		go func() {
-			err := resetbutton.Watch(func() {
-				display.BlinkResetAck()
-				runResetButtonCmd(opts.ResetButtonCmd)
-			})
-			log.Error().Err(err).Msg("reset button watcher exited")
-		}()
-	}
+	// The reset button is the only physical control on the device and the only
+	// way to leave stealth mode, so the watcher runs unconditionally — there is
+	// deliberately no configuration that turns it off, because the setting to
+	// re-enable it would be unreachable from a dark panel.
+	//
+	// Mapping bands to actions belongs here rather than in pkg/resetbutton,
+	// which stays ignorant of LEDs, screens, and commands. Every classified band
+	// is logged, not just the one that acts: it is how an operator discovers the
+	// other bands exist, and the first thing to look at when a press seems to do
+	// nothing (a hold that lands in a dead zone is supposed to do nothing).
+	go func() {
+		err := resetbutton.Watch(func(b resetbutton.Band) {
+			log.Info().Str("band", b.String()).Msg("reset button pressed")
+			if b == resetbutton.BandShortPress {
+				display.ToggleStealth()
+			}
+		})
+		log.Error().Err(err).Msg("reset button watcher exited")
+	}()
 
 	// hub carries live readings from the display's collector goroutines to any
 	// connected web dashboard. It is created unconditionally and passed to
@@ -161,32 +170,6 @@ func awaitServerShutdown(done <-chan struct{}, timeout time.Duration) bool {
 	}
 }
 
-// resetButtonBusy is 1 while the configured reset-button command is
-// running, 0 otherwise.
-var resetButtonBusy int32
-
-// runResetButtonCmd runs the configured reset-button command in the
-// background. A press that arrives while a previous run is still in flight
-// is dropped rather than queued or overlapped - a slow or stuck command
-// (a network call, say) should not pile up concurrent runs just because
-// someone tapped the button more than once.
-func runResetButtonCmd(cmdStr string) {
-	if !atomic.CompareAndSwapInt32(&resetButtonBusy, 0, 1) {
-		log.Warn().Msg("reset button pressed again while previous command is still running, ignoring")
-		return
-	}
-	log.Warn().Str("cmd", cmdStr).Msg("reset button pressed")
-	go func() {
-		defer atomic.StoreInt32(&resetButtonBusy, 0)
-		out, err := exec.Command("/bin/sh", "-c", cmdStr).CombinedOutput()
-		if err != nil {
-			log.Error().Err(err).Str("output", string(out)).Msg("reset button command failed")
-			return
-		}
-		log.Info().Str("output", string(out)).Msg("reset button command finished")
-	}()
-}
-
 // validateExternalCommands checks that every external binary a requested
 // screen depends on is actually runnable, so a missing `wg` or `tailscale`
 // fails fast at startup as a configuration error instead of silently
@@ -226,7 +209,7 @@ func configureFlags(fs *flag.FlagSet, opts *display.CmdLineOpts) error {
 	fs.BoolVar(&opts.Demo, "demo", false, "use fake data for display only")
 	fs.StringVar(&opts.Pidfile, "pidfile", "/var/run/cloudkey.pid", "pidfile")
 	fs.BoolVar(&opts.Version, "version", false, "print version and exit")
-	fs.StringVar(&opts.ResetButtonCmd, "reset-button-cmd", "", "shell command to run on a single physical reset-button press (empty disables)")
+	fs.BoolVar(&opts.StealthMode, "stealth-mode", false, "start with the front panel dark: no LEDs, no screens (a brief reset-button tap toggles it at runtime; not persisted across restarts)")
 	fs.StringVar(&opts.AutoSSHTunnel1Name, "autossh-tunnel1-name", "", "label for the first autossh tunnel (empty disables the autossh screen)")
 	fs.StringVar(&opts.AutoSSHTunnel1Service, "autossh-tunnel1-service", "", "systemd unit name to check for the first autossh tunnel's liveness (empty always shows down)")
 	fs.StringVar(&opts.AutoSSHTunnel2Name, "autossh-tunnel2-name", "", "label for the second autossh tunnel (empty hides the second row)")

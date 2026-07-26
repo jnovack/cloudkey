@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -54,6 +53,11 @@ func TestConfigureFlags(t *testing.T) {
 			if opts.TailscaleCmd != "tailscale" {
 				t.Errorf("tailscale cmd = %q, want %q", opts.TailscaleCmd, "tailscale")
 			}
+			// Stealth must default off: the flag darkens the panel including
+			// every LED, so a device that shipped with it on would look dead.
+			if opts.StealthMode {
+				t.Error("stealth mode = true, want false by default")
+			}
 		})
 	}
 }
@@ -98,49 +102,6 @@ func TestAwaitServerShutdown_WaitsForDoneBeforeGivingUp(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestRunResetButtonCmd_DropsOverlappingPress guards runResetButtonCmd's
-// documented invariant: a press arriving while a previous command is still
-// running is dropped via the CompareAndSwap guard, not queued. Pre-setting
-// resetButtonBusy simulates "previous command still in flight" without
-// needing a slow real command to race against.
-func TestRunResetButtonCmd_DropsOverlappingPress(t *testing.T) {
-	if !atomic.CompareAndSwapInt32(&resetButtonBusy, 0, 1) {
-		t.Fatal("resetButtonBusy already held at test start; another test left it dirty")
-	}
-	t.Cleanup(func() { atomic.StoreInt32(&resetButtonBusy, 0) })
-
-	sentinel := filepath.Join(t.TempDir(), "dropped")
-	runResetButtonCmd("touch " + sentinel)
-
-	// The guard must drop the command synchronously, before ever forking
-	// /bin/sh, so there is no background completion to race against here.
-	if _, err := os.Stat(sentinel); err == nil {
-		t.Fatal("sentinel file exists; overlapping press was not dropped")
-	} else if !os.IsNotExist(err) {
-		t.Fatalf("stat sentinel: %v", err)
-	}
-}
-
-// TestRunResetButtonCmd_RunsWhenIdle is the counterpart to the drop test:
-// with resetButtonBusy clear, the command must actually run (in its
-// background goroutine) rather than always being dropped.
-func TestRunResetButtonCmd_RunsWhenIdle(t *testing.T) {
-	atomic.StoreInt32(&resetButtonBusy, 0)
-	t.Cleanup(func() { atomic.StoreInt32(&resetButtonBusy, 0) })
-
-	sentinel := filepath.Join(t.TempDir(), "created")
-	runResetButtonCmd("touch " + sentinel)
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(sentinel); err == nil {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("sentinel file %q was not created within deadline; command did not run", sentinel)
 }
 
 func TestValidateExternalCommands(t *testing.T) {

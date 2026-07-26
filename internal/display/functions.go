@@ -84,20 +84,91 @@ func fadeIn(target draw.Image) {
 	}
 }
 
+// holdOrToggle sleeps for d, returning true if a stealth toggle arrived first.
+//
+// The carousel's holds are seconds long, so a press has to cut the current one
+// short rather than wait it out: otherwise engaging stealth lags by up to
+// -delay + -blank-delay milliseconds after the button, which reads as a dead
+// button and invites a second press. The fades themselves stay uninterruptible
+// — they are tens of milliseconds, and aborting mid-crossfade would leave the
+// panel at a partial alpha.
+func holdOrToggle(d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+
+	select {
+	case <-stealthToggle:
+		return true
+	case <-t.C:
+		return false
+	}
+}
+
 // startFadeCarousel cycles the screens with a real duty cycle: each screen
 // fades in and holds lit for onDelay, then fades to a genuinely black,
 // held-blank state for offDelay before the next screen. The off-hold (not
 // just the brief fade transition) is what actually gives the OLED panel
 // rest time between screens.
+//
+// It also owns every stealth-mode transition. That is not incidental placement:
+// this is the only goroutine that writes fb (see the screens/screenMu note in
+// display.go), so the button watcher can signal but never draw, and the panel
+// work of engaging or leaving stealth has to happen here.
+//
+// The rotation index is tracked explicitly rather than by a range loop so that
+// leaving stealth resumes where the carousel was interrupted, instead of
+// visibly restarting the rotation from the first screen.
 func startFadeCarousel(onDelay, offDelay float64) {
-	for {
-		for s := range screens {
-			fadeOut()
-			time.Sleep(time.Duration(offDelay) * time.Millisecond)
-			fadeIn(screens[s])
-			time.Sleep(time.Duration(onDelay) * time.Millisecond)
-		}
+	// screens is built once in New and every registry entry but the optional
+	// VPN/tunnel ones is always enabled, so this is unreachable in production.
+	// Guarding anyway: the modulo below would panic on an empty slice, and the
+	// loop this replaced spun a core flat out instead.
+	if len(screens) == 0 {
+		log.Warn().Msg("no screens enabled, carousel not started")
+		return
 	}
+
+	on := time.Duration(onDelay) * time.Millisecond
+	off := time.Duration(offDelay) * time.Millisecond
+
+	idx := 0
+	for {
+		if stealthOn.Load() {
+			// Park indefinitely. Only a button press wakes the panel, and there
+			// is nothing to redraw meanwhile — the screens' own goroutines keep
+			// updating their images and feeding the hub regardless.
+			<-stealthToggle
+			exitStealth()
+
+			// Go straight to a lit screen, skipping the blank hold below. The
+			// panel is already dark, and holding it dark for another
+			// -blank-delay after the press would read as a press that did not
+			// take — which invites a second press, turning stealth back on.
+			if showScreen(screens[idx], on) {
+				enterStealth()
+			}
+			idx = (idx + 1) % len(screens)
+			continue
+		}
+
+		fadeOut()
+		if holdOrToggle(off) {
+			enterStealth()
+			continue
+		}
+
+		if showScreen(screens[idx], on) {
+			enterStealth()
+		}
+		idx = (idx + 1) % len(screens)
+	}
+}
+
+// showScreen fades s in and holds it lit, reporting whether a stealth toggle
+// cut the hold short.
+func showScreen(s draw.Image, on time.Duration) bool {
+	fadeIn(s)
+	return holdOrToggle(on)
 }
 
 // textColor caps drawn text below full white. OLED wear tracks drive

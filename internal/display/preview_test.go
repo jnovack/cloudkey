@@ -67,6 +67,7 @@ func TestPreviewScreens(t *testing.T) {
 		{"wireguard-disconnected", func(s draw.Image) { drawVPNStatus(s, "WireGuard", false) }},
 		{"tailscale-connected", func(s draw.Image) { drawVPNStatus(s, "TailScale", true) }},
 		{"tailscale-disconnected", func(s draw.Image) { drawVPNStatus(s, "TailScale", false) }},
+		{"stealth", drawStealth},
 	}
 	for _, c := range cases {
 		img := image.NewRGBA(image.Rect(0, 0, w, h))
