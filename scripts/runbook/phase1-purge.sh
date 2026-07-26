@@ -7,7 +7,7 @@
 # operator's own machine, since there's no guarantee that machine has
 # bash/ssh-loop tooling available.
 #
-# Mirrors phase1-de-ubiquitizing.md Steps 0, 1, 2, and 4 exactly -- read
+# Mirrors Phase-1-De-Ubiquitizing Steps 0, 1, 2, and 4 exactly -- read
 # that doc for the full why behind each step, especially the danger-zone
 # section this script's package list is built from. Step 3 (the optional
 # LCD replacement) is unrelated to this purge -- it's a separate install,
@@ -30,7 +30,7 @@ set -uo pipefail   # deliberately NOT -e: a failed liveness check needs
 
 ASSUME_YES="${1:-}"
 
-# Never touch these two, no matter what -- see phase1-de-ubiquitizing.md's
+# Never touch these two, no matter what -- see Phase-1-De-Ubiquitizing's
 # danger-zone section for the exact dependency chain (both cascade into the
 # board's base-files package -- cloudkey-plus-apq8053-base-files on the Gen2
 # Plus, cloudkey-g2-apq8053-base-files on the plain Gen2 -- and this board's

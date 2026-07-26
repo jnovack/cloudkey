@@ -5,7 +5,7 @@
 # --ingroup media below requires that group to already exist.
 #
 # Radarr bundles a database helper built against a newer GLIBC than
-# Debian 11 ships -- see phase2-overview.md for the full story. This
+# Debian 11 ships -- see Phase-2-Overview for the full story. This
 # checks for that specific failure after starting the service and
 # applies the documented fix automatically if it's actually present,
 # rather than assuming either way.
@@ -83,5 +83,5 @@ systemctl daemon-reload
 systemctl restart radarr
 
 echo
-echo "Radarr installed. In-app upgrades are self-repairing -- see phase2-apps.md Part 8."
+echo "Radarr installed. In-app upgrades are self-repairing -- see Phase-2-Apps Part 8."
 systemctl is-active radarr

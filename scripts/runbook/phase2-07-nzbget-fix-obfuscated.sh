@@ -3,7 +3,7 @@
 # Fix obfuscated no-extension video files for NZBGet.
 #
 # Deployed to /var/lib/nzbget/scripts/fix-obfuscated.sh and enabled via
-# Extensions=fix-obfuscated.sh in nzbget.conf (see phase2-apps.md
+# Extensions=fix-obfuscated.sh in nzbget.conf (see Phase-2-Apps
 # Part 10). The banner and OPTIONS section below aren't decoration --
 # NZBGet's scanner only registers a file in ScriptDir as a
 # post-processing script if it finds this exact structure (confirmed by

@@ -37,7 +37,7 @@
 # it. Leave NETNS empty and the four apps are probed directly on the
 # host's own loopback, exactly as they run without Phase 4. Only set it
 # if Phase 4 was built AND the apps were pinned into that namespace --
-# use the same name substituted for <vpn> throughout phase4-wireguard.md.
+# use the same name substituted for <vpn> throughout Phase-4-WireGuard.
 # If NETNS is set but that namespace doesn't exist, this skips the pass
 # and says so rather than silently falling back to direct probing --
 # that mismatch (configured but missing) is worth surfacing, not papering

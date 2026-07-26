@@ -1,11 +1,11 @@
 #!/bin/bash
 # Colored one-screen status summary for a de-Ubiquitized Cloud Key: the
-# Phase 2 media-stack apps, the Phase 3 autossh rescue tunnels, and Phase 5
-# Tailscale. Meant to fire automatically on interactive SSH logins (see
-# zz-cloudkey-dashboard.sh), but safe to run by hand any time from any
-# session for a quick check -- every check here is read-only
-# (systemctl/tailscale status), never starts, stops, or reconfigures
-# anything.
+# Phase 2 media-stack apps, the Phase 3 autossh rescue tunnels, the
+# Phase 4 VPN killswitch, and Phase 5 Tailscale. Meant to fire
+# automatically on interactive SSH logins (see zz-cloudkey-dashboard.sh),
+# but safe to run by hand any time from any session for a quick check --
+# every check here is read-only (systemctl/vpn-check.sh/tailscale
+# status), never starts, stops, or reconfigures anything.
 #
 # Every phase past 1 is optional, and there's no fixed order past that --
 # a box might have the media stack but not remote access, or Tailscale but
@@ -62,7 +62,7 @@ svc_line() {
 
 printed_any=0
 
-# unit:label -- see phase2-apps.md for why these four and these ports.
+# unit:label -- see Phase-2-Apps for why these four and these ports.
 APPS=(
   "nzbget:NZBGet (port 6789)"
   "sonarr:Sonarr (port 8989)"
@@ -81,7 +81,7 @@ if [ "$media_installed" -eq 1 ]; then
   printed_any=1
 fi
 
-# Discover configured relays instead of hardcoding one -- phase3-autossh.md
+# Discover configured relays instead of hardcoding one -- Phase-3-AutoSSH
 # supports one Tier-1 + optional Tier-2 pair per <vps>, and there's no fixed
 # count of relays across builds. An empty glob here already means "Phase 3
 # not built," so it doubles as this section's install check.
@@ -97,6 +97,26 @@ if [ "${#tier1_units[@]}" -gt 0 ]; then
     svc_line "$unit" "$vps (Tier 1, rescue SSH)"
     svc_line "${unit}-webui" "$vps (Tier 2, on-demand web UI)"
   done
+  printed_any=1
+fi
+
+# Phase-4-WireGuard is fully optional and, unlike the other sections,
+# has no systemd unit whose mere presence is a safe install check --
+# wg-quick-vpn.service exists as soon as you follow Part 3, so its
+# LoadState alone can't distinguish "built" from "not built" the way an
+# absent unit does elsewhere. vpn-check.sh only gets installed in Part 6,
+# once the tunnel is already up, so its presence is what this gates on.
+if [ -x /usr/local/sbin/vpn-check.sh ]; then
+  section "VPN (netns killswitch)"
+  # Calls the real health check rather than trusting
+  # `systemctl is-active wg-quick-vpn.service` -- that unit's Active
+  # state can go stale if the tunnel process dies unannounced (Part 6).
+  if /usr/local/sbin/vpn-check.sh -q; then
+    printf "  %-30s ${GREEN}%s${RESET}\n" "Tunnel (live check)" "live"
+  else
+    printf "  %-30s ${RED}%s${RESET}\n" "Tunnel (live check)" "DOWN (auto-heal checks every 60s)"
+  fi
+  svc_line vpn-heal.timer "Auto-heal timer"
   printed_any=1
 fi
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Runs as ExecStartPre for Radarr and Prowlarr (see the sqlite-glibc.conf
-# drop-in in phase2-apps.md). Takes the app's install directory name --
+# drop-in in Phase-2-Apps). Takes the app's install directory name --
 # "Radarr" or "Prowlarr" -- and repairs its bundled SQLite helper if that
 # helper can't actually load on this OS.
 #
@@ -25,7 +25,7 @@
 # real hang the main thread sits in futex_wait_queue_me with nothing
 # reading fd 0. It survives because .NET won't exit while foreground
 # threads (Kestrel, thread pool) started before the failure are still
-# running. See phase2-overview.md before trying to solve this with
+# running. See Phase-2-Overview before trying to solve this with
 # Restart= or StandardInput= settings -- they cannot work.
 #
 # Deliberately advisory, never fatal: if the repair can't be made, this

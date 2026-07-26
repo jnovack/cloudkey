@@ -4,7 +4,7 @@
 #
 # Run this ON YOUR VPS, not the Cloud Key -- this is the "everyday"
 # Tailscale coordination server the Cloud Key (and your other devices)
-# will eventually enroll into. See phase5-headscale.md for the full
+# will eventually enroll into. See Phase-5-Headscale for the full
 # walkthrough and why each piece is shaped the way it is; this script
 # just writes the same files that doc shows by hand.
 #
@@ -34,7 +34,7 @@
 #                                       # Omit to leave headplane's admin
 #                                       # UI without a client-cert gate.
 #
-# See phase5-headscale.md Part 7 before your first `make deploy`: if
+# See Phase-5-Headscale Part 7 before your first `make deploy`: if
 # Traefik's default TLS store already has a wildcard cert covering
 # either domain, it will silently never request a dedicated one for
 # them -- not something this script can detect or fix for you.
@@ -86,7 +86,7 @@ prefixes:
   v6: fd7a:115c:a1e0::/48
   allocation: sequential
 
-# Not self-hosting DERP for a first build - see phase5-headscale.md
+# Not self-hosting DERP for a first build - see Phase-5-Headscale
 # Part 2 for why the public Tailscale DERP servers are fine here.
 derp:
   server:
@@ -268,7 +268,7 @@ services:
         - "traefik.http.services.headscale.loadbalancer.server.port=8080"
 
   headplane:
-    # See phase5-overview.md: headplane's release automation doesn't
+    # See Phase-5-Overview: headplane's release automation doesn't
     # reliably push versioned registry tags. Before your first deploy,
     # confirm what this digest actually is (pull it, check its
     # org.opencontainers.image.version label) rather than trusting it
@@ -291,7 +291,7 @@ services:
     deploy:
       replicas: 1
       resources:
-        # See phase5-overview.md: 128M is not enough, it wedges the
+        # See Phase-5-Overview: 128M is not enough, it wedges the
         # Node process into a near-permanent GC stall instead of
         # crashing it outright.
         limits:
@@ -444,6 +444,6 @@ echo "  4. make policy-set   # seeds the database from acl.hujson -- do"
 echo "     this before enrolling any device, not after (policy.mode is"
 echo "     'database', so skipping this leaves headscale's own default"
 echo "     in place until you run it)"
-echo "  5. Verify (see phase5-headscale.md Part 7-8 -- check the served"
+echo "  5. Verify (see Phase-5-Headscale Part 7-8 -- check the served"
 echo "     certificate before trusting it, not just that it deployed)."
 echo "  6. make apikey   # paste into headplane's login screen"

@@ -7,17 +7,17 @@
 # phase2-03-radarr.sh -- all three either join or assign their user to
 # the 'media' group, which has to exist first. Not required by
 # phase2-04-prowlarr.sh (its own dedicated group). Also the first thing
-# to re-run after replacing the drive (phase1-de-ubiquitizing.md Step 7)
+# to re-run after replacing the drive (Phase-1-De-Ubiquitizing Step 7)
 # -- safe to re-run any time, it's idempotent.
 #
-# The three .keep files aren't optional -- see phase2-overview.md for
+# The three .keep files aren't optional -- see Phase-2-Overview for
 # why (a still-active board-level tool deletes empty directories under
 # /volume on every boot; a placeholder file neutralizes it).
 
 set -euo pipefail
 
 if [[ ! -d /volume ]]; then
-  echo "error: /volume doesn't exist -- run phase1-de-ubiquitizing.md Step 7 (or phase1-format-mount-volume.sh) first" >&2
+  echo "error: /volume doesn't exist -- run Phase-1-De-Ubiquitizing Step 7 (or phase1-format-mount-volume.sh) first" >&2
   exit 1
 fi
 

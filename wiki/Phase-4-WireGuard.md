@@ -764,6 +764,15 @@ vpn_line
 svc_line vpn-heal.timer "Auto-heal timer"
 ```
 
+[CloudKey Admin Tools](CloudKey-Admin-Tools) packages exactly this
+logic as [`scripts/runbook/cloudkey-dashboard.sh`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/cloudkey-dashboard.sh)
+— the snippet above is what it implements, kept here for the rationale.
+It gates the whole section on `/usr/local/sbin/vpn-check.sh` being
+present rather than on any unit's `LoadState`, since `wg-quick-vpn.service`
+exists as soon as you follow Part 3 — its mere presence can't tell "Phase
+4 built" from "Phase 4 not built" the way an absent unit does for the
+other optional phases.
+
 ## Monitoring and alerting readiness
 
 Everything needed for a future alerting pass already exists; this

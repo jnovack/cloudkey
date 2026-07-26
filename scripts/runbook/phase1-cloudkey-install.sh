@@ -3,7 +3,7 @@
 # github.com/jnovack/cloudkey, pulling the pre-built binary straight from
 # its latest GitHub release -- no cross-compile toolchain needed anywhere.
 #
-# Mirrors phase1-de-ubiquitizing.md Step 3 -- read that doc for the full
+# Mirrors Phase-1-De-Ubiquitizing Step 3 -- read that doc for the full
 # why (the ck-ui purge prohibition, the systemd unit's hardening choices).
 #
 # Run this ON THE BOX ITSELF, any time after phase1-purge.sh's Step 1 has

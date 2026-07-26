@@ -1,7 +1,7 @@
 #!/bin/bash
 # Formats and mounts a bulk-storage drive at /volume: whole-disk ext4, no
 # partition table (the "superfloppy" pattern this box has used for every
-# drive so far -- see phase1-de-ubiquitizing.md Step 7 for why).
+# drive so far -- see Phase-1-De-Ubiquitizing Step 7 for why).
 #
 # Wipes the target device unconditionally, with no attempt to detect or
 # preserve an existing filesystem/partition table -- a drive being
@@ -51,7 +51,7 @@ UUID="$(blkid -s UUID -o value "$DEVICE")"
 
 cat > /etc/systemd/system/volume.mount <<EOF
 [Unit]
-Description=Bulk storage drive (whole-disk ext4, no partition table, see phase1-de-ubiquitizing.md Step 7)
+Description=Bulk storage drive (whole-disk ext4, no partition table, see Phase-1-De-Ubiquitizing Step 7)
 
 [Mount]
 What=/dev/disk/by-uuid/$UUID

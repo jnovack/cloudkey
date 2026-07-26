@@ -5,7 +5,7 @@
 # installer assigns its new user to the 'media' group at creation time.
 #
 # Sonarr's official installer reads its user/group prompts from
-# /dev/tty directly, bypassing stdin -- see phase2-overview.md for why
+# /dev/tty directly, bypassing stdin -- see Phase-2-Overview for why
 # piping answers in doesn't work here. This patches those two `read`
 # lines out of the downloaded script before running it, replacing them
 # with fixed values, rather than trying to answer them interactively.

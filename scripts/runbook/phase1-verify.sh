@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run this after rebooting (following phase1-purge.sh), once reconnected.
-# Scripts Step 5's verification checklist from phase1-de-ubiquitizing.md
+# Scripts Step 5's verification checklist from Phase-1-De-Ubiquitizing
 # so nothing gets skipped by accident -- but the reboot itself, and
 # reconnecting afterward, is still on you: this can't run itself.
 set -uo pipefail

@@ -5,7 +5,7 @@
 # NOT the VPS running the Headscale server (that's script 00). Enables
 # and starts tailscaled, but does not run `tailscale up` -- joining the
 # tailnet is a separate, deliberate step using a pre-auth key generated
-# on the Headscale server (see phase5-headscale.md Part 9).
+# on the Headscale server (see Phase-5-Headscale Part 9).
 #
 # Safe to re-run: apt-get install is a no-op if already installed.
 #

@@ -89,7 +89,7 @@ die() { log "ABORT: $*"; exit 1; }
 # Everything device-specific (host, export, library mappings) is
 # required config, not optional -- a missing or incomplete env file
 # should fail loudly here, not silently sync nothing or sync the wrong
-# thing. See phase2-hardening.md Part 11 for the file's expected shape.
+# thing. See Phase-2-Hardening Part 11 for the file's expected shape.
 [[ -f "$ENV_FILE" ]] || { echo "media-incoming-sync: $ENV_FILE missing" >&2; exit 1; }
 # shellcheck source=/etc/media-incoming-sync.env
 source "$ENV_FILE"
@@ -300,7 +300,7 @@ done
 # non-empty when this service exits and systemd.path's own recheck
 # retries the whole thing automatically -- no Restart= needed, and
 # confirmed this applies regardless of exit status, not just success
-# (see `man systemd.path`, and phase2-hardening.md Part 11).
+# (see `man systemd.path`, and Phase-2-Hardening Part 11).
 if [[ "$overall" -eq 0 ]]; then
   rm -f "${claimed[@]}" 2>/dev/null || true
 fi
