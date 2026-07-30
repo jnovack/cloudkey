@@ -25,14 +25,17 @@ Web Dashboard (opt-in, see -http-port below)
 
 ![Dashboard, full](docs/screenshots/dashboard02.png)
 
-## The Cloud Key Runbook
+## The Wiki
 
-cloudkey replaces the front panel. The
-**[wiki](https://github.com/jnovack/cloudkey/wiki)** covers everything else —
-a phase-by-phase runbook for turning a Cloud Key Gen2 / Gen2 Plus into a
-plain Debian server and building on it. Verified on real hardware, written
+**cloudkey** (this repo, the resulting binary) replaces the front panel.
+
+The **[wiki](https://github.com/jnovack/cloudkey/wiki)** covers everything
+else — a phase-by-phase runbook for turning a Cloud Key Gen2 / Gen2 Plus into
+a plain Debian server and building on it. Verified on real hardware, written
 so a stranger can follow along, and paired with ready-to-run scripts in
 [`scripts/runbook/`](scripts/runbook/).
+
+## The Cloud Key Runbook
 
 | Phase | What it gets you |
 | --- | --- |
