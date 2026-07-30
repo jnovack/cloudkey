@@ -17,6 +17,7 @@ Other
 - [CloudKey Admin Tools](CloudKey-Admin-Tools)
 - [macOS AutoSSH](macOS-AutoSSH)
 - [Tailscale for Synology](Tailscale-for-Synology)
+- [UCK-G2 Hardware Reference](UCK-G2-Hardware-Reference)
 
 ---
 

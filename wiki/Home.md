@@ -37,6 +37,8 @@ Not tied to a single phase:
   Cloud Keys and Macs together.
 - [Tailscale for Synology](Tailscale-for-Synology) — enrolling a Synology
   NAS into the Phase 5 tailnet.
+- [UCK-G2 Hardware Reference](UCK-G2-Hardware-Reference) — framebuffer,
+  LED, and firmware-process details for anyone replacing `ck-ui`.
 
 ## Script assets
 
