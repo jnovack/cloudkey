@@ -11,6 +11,20 @@
 # doubled instead of matching this single-banner-plus-OPTIONS shape,
 # both logged "doesn't exist" and were silently never run).
 #
+# The OPTIONS section needs its OWN closing "### NZBGET ... SCRIPT ###"
+# banner below (not just the opening one above) -- confirmed against
+# nzbget's own ExtensionLoader.cpp: once it enters the OPTIONS section it
+# keeps consuming every subsequent line as a bogus config option until it
+# finds a line containing " SCRIPT" to end on. Without that terminator it
+# silently swallows the rest of this file -- `set -uo pipefail`,
+# `POSTPROCESS_SUCCESS=93`, every function below -- as garbage options
+# (confirmed live: nzbget's loadextensions API returned corrupted entries
+# like "OSTPROCESS_SUCCESS"="93", the leading letter eaten by a parser
+# that assumes every line is `#Name=value`). The script still ran despite
+# this -- POST-PROCESSING kind is decided from the opening banner, before
+# OPTIONS parsing starts -- but it left every discovered "option" garbage
+# in the Settings UI. Do not remove the closing banner as redundant.
+#
 ##############################################################################
 ### NZBGET POST-PROCESSING SCRIPT                                          ###
 
@@ -55,6 +69,7 @@
 
 # (no configurable options -- thresholds are fixed in the script body)
 
+### NZBGET POST-PROCESSING SCRIPT                                          ###
 ##############################################################################
 
 set -uo pipefail
@@ -126,9 +141,17 @@ for f in "$DIR"/*; do
 
   ext=$(sniff_extension "$f")
   if [ -n "$ext" ]; then
-    mv -- "$f" "$f.$ext"
-    log INFO "renamed '$(basename -- "$f")' -> '$(basename -- "$f").$ext' (detected $ext by file signature)"
-    renamed=1
+    # Check mv's own exit status rather than assuming it worked --
+    # an unchecked failure here (permissions, disk full, cross-device
+    # weirdness) would otherwise still log "renamed" and let the loop
+    # report overall success below, leaving Sonarr/Radarr with the same
+    # unimportable file and no signal anything went wrong.
+    if mv -- "$f" "$f.$ext"; then
+      log INFO "renamed '$(basename -- "$f")' -> '$(basename -- "$f").$ext' (detected $ext by file signature)"
+      renamed=1
+    else
+      log WARNING "detected $ext for '$(basename -- "$f")' but rename failed -- leaving it in place"
+    fi
   fi
 done
 

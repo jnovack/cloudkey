@@ -44,7 +44,7 @@ so a stranger can follow along, and paired with ready-to-run scripts in
 | [3 — AutoSSH](https://github.com/jnovack/cloudkey/wiki/Phase-3-AutoSSH) | A reverse-SSH rescue tunnel through a relay, so you can still reach the box when the network moves out from under it (feeds the autossh screen above); [macOS variant](https://github.com/jnovack/cloudkey/wiki/macOS-AutoSSH) included |
 | [4 — WireGuard](https://github.com/jnovack/cloudkey/wiki/Phase-4-WireGuard) | Fail-closed VPN egress using a network namespace — apps get no route at all if the tunnel drops, plus health checks and self-healing (feeds the wireguard screen) |
 | [5 — Headscale](https://github.com/jnovack/cloudkey/wiki/Phase-5-Headscale) | A self-hosted Headscale + headplane control server and client enrolment, including a [Synology NAS](https://github.com/jnovack/cloudkey/wiki/Tailscale-for-Synology) (feeds the tailscale screen) |
-| [9 — Backup & Restore](https://github.com/jnovack/cloudkey/wiki/Phase-9-Backup-Restore) | Back every custom file up to the SD card and put it back on a rebuilt box |
+| [9 — Backup & Restore](https://github.com/jnovack/cloudkey/wiki/Phase-9-Backup-Restore) | Back every custom file up to the SD card weekly and put it back on a rebuilt box |
 
 Also there: [CloudKey Admin Tools](https://github.com/jnovack/cloudkey/wiki/CloudKey-Admin-Tools),
 an on-box status dashboard and diagnostic runbook that works across every phase.

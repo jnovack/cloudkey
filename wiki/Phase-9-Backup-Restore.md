@@ -50,6 +50,7 @@ Captured (kept in sync with each phase's own File manifest):
 | `/etc/systemd/system` + `/lib/systemd/system/cloudkey.service` | units, per-service drop-ins, enablement |
 | `/etc/profile.d/zz-cloudkey-dashboard.sh` | interactive-login status dashboard loader |
 | `/etc/cloudkey.env` | Phase 1 Step 3 LCD-app config (tunnel/app rows) |
+| `/etc/systemd/journald.conf.d` | Phase 1 persistent-journal drop-in (takes effect on the post-restore reboot) |
 | `/etc/wireguard`, `/etc/netns` | Phase 4 tunnel config + namespace DNS |
 | `/etc/autossh` | Phase 3 tunnel keys + pinned `known_hosts` |
 | `/etc/apt/keyrings/tailscale-*.gpg`, `/etc/apt/sources.list.d/tailscale.list`, `/var/lib/tailscale` | Phase 5 client (state included, so restore keeps the node identity) |
@@ -112,6 +113,95 @@ BACKUP_ROOT=/tmp/cloudkey-backup phase9-backup.sh --no-quiesce
 deployed at `/usr/local/sbin/phase9-backup.sh`. The path list at the top
 of the script is the single source of truth — when a later change adds a
 new custom file, add its path (or its parent directory) there.
+
+## Running it on a schedule
+
+A backup you have to remember to run is only as fresh as the last time
+you thought of it, and "roll back a bad change" needs a snapshot from
+*before* that change. So the backup runs weekly on a systemd timer, with
+the command above still available for an extra snapshot before a risky
+change.
+
+`/etc/systemd/system/phase9-backup.service`:
+
+```ini
+[Unit]
+Description=Phase 9 config/state backup to the SD card (phase9-backup.sh)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sh -c 'n=0; until mountpoint -q /sdcard || [ "$$n" -ge 120 ]; do n=$$((n+1)); sleep 1; done'
+ExecStart=/usr/local/sbin/phase9-backup.sh
+Nice=10
+IOSchedulingClass=idle
+```
+
+`/etc/systemd/system/phase9-backup.timer`:
+
+```ini
+[Unit]
+Description=Weekly Phase 9 config/state backup
+
+[Timer]
+OnCalendar=Sun *-*-* 03:30:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl daemon-reload
+systemctl enable --now phase9-backup.timer
+systemctl list-timers phase9-backup.timer
+```
+
+Why it's shaped this way:
+
+- **Sunday at 03:30, weekly.** Each run stops the media apps for a few
+  seconds, so it runs when nobody's watching anything. Seven snapshots
+  (`KEEP=7`) at one a week is about two months of history.
+- **`Persistent=true`** runs a missed backup at the next boot if the box
+  was off at the scheduled time.
+- **`After=multi-user.target`**, so a run at boot waits for the media
+  apps to finish starting. The backup only stops apps that are already
+  running, so one still starting up would be copied mid-write.
+- **The wait for `/sdcard`.** The card isn't mounted by any unit you
+  control. The UniFi `unifi-sdcard` udev hook (from a package Phase 1
+  deliberately keeps) mounts it about 30 seconds into boot, and
+  `timers.target` is reached *before* that. The wait gives a boot-time
+  run up to two minutes to see the card. It never fails the unit by
+  itself.
+- **A missing card fails the unit instead of skipping.** A `Condition=`
+  would skip the run silently, and a backup that never happens looks
+  exactly like one that worked. Instead the script's own root-filesystem
+  check refuses to run and the unit shows as failed.
+
+Check on it with:
+
+```bash
+systemctl list-timers phase9-backup.timer         # next and last run
+systemctl status phase9-backup.service            # result of the last run
+journalctl -u phase9-backup.service -n 20         # its log
+```
+
+To test the unit end to end without waiting for Sunday, start the service
+by hand (this is a real backup, including the brief app stop):
+
+```bash
+systemctl start phase9-backup.service
+```
+
+**Packaged version**: [`scripts/runbook/phase9-backup.service`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase9-backup.service)
+and [`scripts/runbook/phase9-backup.timer`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase9-backup.timer),
+with the reasoning above as comments in the files. Install both into
+`/etc/systemd/system/` (mode 644), then run the enable commands above:
+
+```bash
+scp scripts/runbook/phase9-backup.{service,timer} root@<device-ip>:/etc/systemd/system/
+```
 
 ## Restoring
 
@@ -185,6 +275,8 @@ tailscale status      # coordination tunnel reconnected
 | Path | Purpose |
 | --- | --- |
 | `/usr/local/sbin/phase9-backup.sh` | timestamped config/state backup to `/sdcard`; source of truth is [`scripts/runbook/phase9-backup.sh`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase9-backup.sh) |
+| `/etc/systemd/system/phase9-backup.service` | oneshot unit that runs the backup, waiting for the SD card mount first; source of truth is [`scripts/runbook/phase9-backup.service`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase9-backup.service) |
+| `/etc/systemd/system/phase9-backup.timer` | runs that unit weekly (Sunday about 03:30, with catch-up at boot); enabled with `systemctl enable --now`; source of truth is [`scripts/runbook/phase9-backup.timer`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase9-backup.timer) |
 | `/usr/local/sbin/phase9-restore.sh` | restore (with `--dry-run`) from a snapshot; source of truth is [`scripts/runbook/phase9-restore.sh`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase9-restore.sh) |
 | `/sdcard/cloudkey-backup/<stamp>/` | one snapshot: the captured tree under full paths, plus `MANIFEST.txt` |
 | `/sdcard/cloudkey-backup/latest` | symlink to the newest snapshot |

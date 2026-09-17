@@ -1,0 +1,15 @@
+[Unit]
+Description=Weekly Phase 9 config/state backup
+
+[Timer]
+# Sunday night: the backup briefly stops the media apps to snapshot their
+# SQLite databases, so run it when nobody is using them. Weekly with
+# phase9-backup.sh's KEEP=7 is about two months of history.
+OnCalendar=Sun *-*-* 03:30:00
+RandomizedDelaySec=30min
+# Catch up at boot if the box was off at the scheduled time; the service
+# waits for the SD card mount so this doesn't race it.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

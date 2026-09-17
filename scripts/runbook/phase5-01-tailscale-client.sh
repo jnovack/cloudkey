@@ -14,6 +14,31 @@
 
 set -euo pipefail
 
+# Rate-limit tailscaled's journal output BEFORE the install first starts
+# it. Unable to reach the coordination server (e.g. an expired cert in
+# front of Headscale), it logs every retry at ~150 lines/min, which
+# rotates the previous boot out of Phase 1's journal cap in hours -- the
+# exact logs needed after an unclean death.
+#
+# Burst=100 is not the effective limit: journald scales the burst by free
+# journal space (~x3 with Phase 1's 500M cap mostly free, confirmed with
+# a probe unit at burst 5 keeping 16 lines; toward x1 as it fills). So
+# this is ~300/5min (~60/min) -- above a healthy tailscaled (a couple of
+# hundred lines at startup, then a few a minute), well below the retry
+# loop. Setting 300 here would really allow ~900/5min and not stop the
+# loop at all. journald logs "Suppressed N messages" on the unit's next
+# line after the window, so dropped output still leaves a trace.
+# The limit only binds at unit start, so an already-running tailscaled
+# needs a restart to pick it up -- not done here, since that drops any
+# SSH session riding the tailnet.
+install -d -m 755 /etc/systemd/system/tailscaled.service.d
+cat > /etc/systemd/system/tailscaled.service.d/log-rate-limit.conf <<'EOF'
+[Service]
+LogRateLimitIntervalSec=5min
+LogRateLimitBurst=100
+EOF
+systemctl daemon-reload
+
 DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://pkgs.tailscale.com/stable/debian/bullseye.noarmor.gpg \
@@ -31,6 +56,9 @@ echo
 echo "tailscaled installed and running. Not joined to a tailnet yet."
 systemctl is-enabled tailscaled
 systemctl is-active tailscaled
+systemctl show tailscaled -p LogRateLimitIntervalUSec -p LogRateLimitBurst
+echo "(if tailscaled was already running before this script, restart it to apply"
+echo " the log rate limit: systemd-run --on-active=5s systemctl restart tailscaled)"
 echo
 echo "Next: generate a pre-auth key on the Headscale server (make preauthkey"
 echo "USER_ID=<id> EXPIRATION=1h), then on this device:"

@@ -52,7 +52,7 @@
 # vpn-heal.sh's job (Phase 4 Part 6), not this script's.
 #
 # Logging is transition-based: this runs every 60s and logging "still
-# healthy" every pass would bury real events and eat the box's 80MB
+# healthy" every pass would bury real events and eat the box's 500MB
 # persistent journal budget. systemd already records a per-cycle
 # heartbeat (Starting.../Finished...) for free.
 

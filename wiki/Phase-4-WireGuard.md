@@ -804,19 +804,19 @@ An alerting rule of "no entry in longer than N cycles" is a complete
 dead-man's-switch on the whole health-check system without touching
 `vpn-heal.sh` itself.
 
-**Log durability**: confirm `journald` is actually persistent before
-relying on any of this surviving a reboot — some minimal/embedded
-systems default to volatile (in-memory only) journal storage:
+**Log durability**: none of this survives a reboot unless the journal is
+persistent. [Phase 1](Phase-1-De-Ubiquitizing) ("Before you start",
+item 5) sets `Storage=persistent` and a 500MB `SystemMaxUse=` cap via a
+drop-in; confirm it's in effect before relying on it:
 
 ```bash
-grep '^Storage=' /etc/systemd/journald.conf   # want: Storage=persistent
-journalctl --disk-usage                # check against your disk budget
+systemd-analyze cat-config systemd/journald.conf | grep -E '^(Storage|SystemMaxUse)='   # last of each wins
+journalctl --list-boots                # more than one boot = persistent
+journalctl --disk-usage                # check against the cap
 ```
 
-If it's not already `persistent`, set it and restart `systemd-journald`.
-Also check `SystemMaxUse=` is set to something sane for your disk size —
-constrained/embedded hosts especially, where an unbounded journal could
-compete with actual application storage.
+Check the effective config rather than grepping `journald.conf` alone —
+a drop-in overrides the main file, so the main file can say anything.
 
 ## Verification
 

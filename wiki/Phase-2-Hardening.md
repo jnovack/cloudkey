@@ -172,7 +172,8 @@ comparing against an older deployment.
 Logging is transition-only — it reports failures, restarts, and
 recoveries, but stays silent while things are healthy. At a 60-second
 interval, logging every successful pass would bury real events and eat
-into this box's 80MB persistent journal budget for nothing.
+into this box's 500MB persistent journal budget (set in
+[Phase 1](Phase-1-De-Ubiquitizing), "Before you start" item 5) for nothing.
 
 To verify it end to end, break Radarr on purpose with Part 8's repair
 temporarily disabled:
@@ -253,9 +254,28 @@ Confirm it loaded cleanly with no such warning:
 journalctl -u nzbget --no-pager -n 30 | grep -i extension
 ```
 
-Silence here is success. To verify the actual rename/fail logic works,
-run it directly against synthetic test folders rather than waiting for
-a real obfuscated release:
+Silence here means the banner was found, but it's not the whole story:
+the OPTIONS section below the banner needs its own closing
+`### NZBGET ... SCRIPT ###` line too, or NZBGet keeps reading past it
+and parses the script's own code as bogus config options — silently,
+with no journal warning at all (confirmed live 2026-09-16: nzbget's
+`loadextensions` API showed garbage option names like
+`OSTPROCESS_SUCCESS` where `POSTPROCESS_SUCCESS=93` should have been
+inert). The script still runs in that state, so functionally you may
+not notice — but it's worth a positive check after touching this file:
+
+```bash
+curl -s "http://nzbget:<ControlPassword>@127.0.0.1:6789/jsonrpc" \
+  -d '{"method":"loadextensions","params":[true]}' | python3 -m json.tool
+```
+
+Look for `"PostScript": true` and an empty (or intentional-only)
+`"Options"` list for `fix-obfuscated`. Run this inside the `mullvad`
+netns if Phase 4 pins NZBGet into it (see Part 11).
+
+To verify the actual rename/fail logic works, run it directly against
+synthetic test folders rather than waiting for a real obfuscated
+release:
 
 ```bash
 # A large file with an MP4 signature but no extension -- should rename

@@ -62,6 +62,41 @@ attempt, so you don't repeat it.
 4. **Check what's actually on your `/volume` partition** before assuming
    it's safe to reclaim — if this device was ever running UniFi Protect,
    there may be camera footage or backups on it.
+5. **Give the journal enough room to outlive a crash**, so a box that
+   dies mid-purge — or any time after — comes back with the previous
+   boot's logs still readable (`journalctl -b -1`). The stock image
+   already sets `Storage=persistent`, but caps it at `SystemMaxUse=80M`:
+   one daemon stuck in a logging loop can rotate the entire previous boot
+   out of that within a few hours, which looks exactly like a volatile
+   journal by the time you go looking. Pin both settings with a drop-in,
+   not by editing `/etc/systemd/journald.conf`: that file is a dpkg
+   conffile the UniFi image already modifies, and a drop-in overrides
+   whatever it says:
+
+   ```bash
+   mkdir -p /etc/systemd/journald.conf.d
+   cat > /etc/systemd/journald.conf.d/zz-persistent.conf <<'EOF'
+   [Journal]
+   Storage=persistent
+   SystemMaxUse=500M
+   EOF
+   systemctl restart systemd-journald
+   journalctl --flush       # move this boot's messages to disk now
+   systemd-analyze cat-config systemd/journald.conf | grep -E '^(Storage|SystemMaxUse)='   # last of each wins
+   ```
+
+   Why 500M: on the Plus, `/var/log` lives on the ~6G overlay partition
+   alongside every other rootfs change, so the cap stays well clear of
+   that while still holding over a week at normal volume. The other half
+   of the fix is per-daemon rate limiting, so one noisy service can't eat
+   the budget on its own — [Phase 5](Phase-5-Headscale) Part 9 does this
+   for `tailscaled`. Step 5's reboot is what proves the setting survives
+   a boot.
+
+   **Packaged version**: [`scripts/runbook/phase1-persistent-journal.sh`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase1-persistent-journal.sh),
+   deployed at `/usr/local/bin/phase1-persistent-journal.sh`, writes the
+   drop-in, restarts and flushes journald, and fails loudly if the
+   effective settings aren't `persistent` and `500M`. Safe to re-run.
 
 ## The danger zone: what not to remove
 
@@ -431,7 +466,12 @@ reboot
 ssh root@<device-ip> uptime
 ip -4 addr show eth0          # confirm DHCP renewed
 systemctl --failed            # should be empty (or explainable)
+journalctl --list-boots       # must list the pre-reboot boot too
 ```
+
+The last check is the proof that "Before you start" item 5 took effect:
+one boot listed means the journal is still volatile, and the next unclean
+death will leave nothing behind to diagnose.
 
 Expect a couple of orphaned units to show up as failed here, harmlessly:
 
@@ -890,6 +930,8 @@ Everything created by this guide, for a final checklist:
 
 | Path | Purpose |
 | --- | --- |
+| `/usr/local/bin/phase1-persistent-journal.sh` | Before you start, item 5 — writes the persistent-journal drop-in below; source of truth is [`scripts/runbook/phase1-persistent-journal.sh`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase1-persistent-journal.sh) in this repo |
+| `/etc/systemd/journald.conf.d/zz-persistent.conf` | `Storage=persistent` + `SystemMaxUse=500M`, so a previous boot's logs survive a crash and a noisy daemon; a drop-in, **not** an edit to `journald.conf` itself |
 | `/usr/local/bin/phase1-purge.sh` | Steps 0/1/2/4 — simulate-gated batched purge + cleanup; source of truth is [`scripts/runbook/phase1-purge.sh`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase1-purge.sh) in this repo |
 | `/usr/local/bin/phase1-verify.sh` | Step 5's post-reboot checklist, scripted; source of truth is [`scripts/runbook/phase1-verify.sh`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase1-verify.sh) in this repo |
 | `/usr/local/bin/phase1-account-cleanup.sh` | Step 4 — removes the orphaned UniFi service accounts/groups the purge leaves behind (guarded; never touches `ui`/`postgres`); source of truth is [`scripts/runbook/phase1-account-cleanup.sh`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase1-account-cleanup.sh) in this repo |
@@ -911,7 +953,8 @@ Everything created by this guide, for a final checklist:
 A stock, fully-patched Debian 11 ARM64 box: SSH access hardened to keys
 only with an unprivileged `cloudkey` admin user (Step 8) and a
 reset-button escape hatch for the day you lose your key, a working
-front-panel LCD (if you replaced it), power-loss protection independently
+front-panel LCD (if you replaced it), a persistent journal that keeps the
+previous boot's logs through a crash, power-loss protection independently
 verified intact through all of the above, roughly 15 fewer packages than
 it started with, and nothing left in `apt list --upgradable`. The internal
 drive bay's fate depends entirely on what you find in Step 7 — a healthy

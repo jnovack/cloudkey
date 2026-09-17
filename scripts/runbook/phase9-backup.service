@@ -1,0 +1,25 @@
+[Unit]
+Description=Phase 9 config/state backup to the SD card (phase9-backup.sh)
+Documentation=https://github.com/jnovack/cloudkey/wiki/Phase-9-Backup-Restore
+
+# Started by phase9-backup.timer. A missed run (box off at the scheduled
+# time) is caught up at boot, so order after multi-user.target: the media
+# apps are up by then, and phase9-backup.sh only quiesces apps that are
+# already active -- one still starting would be skipped and snapshotted
+# mid-write instead.
+After=multi-user.target
+
+[Service]
+Type=oneshot
+# /sdcard is mounted by the kept UniFi `unifi-sdcard` udev hook, ~30s into
+# boot, independently of every target -- multi-user.target happening to
+# come up after it is timing luck, not ordering. Wait for the mount (up to
+# 2 min) so a boot-time catch-up run doesn't lose that race. This never
+# fails the unit itself: if the card really is missing, phase9-backup.sh's
+# own rootfs guard refuses to run and fails the unit loudly, which is the
+# signal wanted -- a Condition= here would skip silently instead.
+ExecStartPre=/bin/sh -c 'n=0; until mountpoint -q /sdcard || [ "$$n" -ge 120 ]; do n=$$((n+1)); sleep 1; done'
+ExecStart=/usr/local/sbin/phase9-backup.sh
+# Background work on a small box that is also serving the media apps.
+Nice=10
+IOSchedulingClass=idle

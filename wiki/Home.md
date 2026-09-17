@@ -25,7 +25,7 @@ Phases 1 and 3–9 apply to either.
 | 4 | [Phase 4 — WireGuard](Phase-4-WireGuard) — fail-closed VPN egress (netns + WireGuard) for the Phase 2 apps |
 | 5 | [Phase 5 — Headscale](Phase-5-Headscale) — self-hosted Headscale + headplane coordination server, plus enrolling a client (rationale/pitfalls in [Phase 5 Overview](Phase-5-Overview)) |
 | 6–8 | *(unallocated — reserved for future work)* |
-| 9 | [Phase 9 — Backup & Restore](Phase-9-Backup-Restore) — back up every custom file to the SD card and restore it |
+| 9 | [Phase 9 — Backup & Restore](Phase-9-Backup-Restore) — back up every custom file to the SD card weekly on a timer, and restore it |
 
 Not tied to a single phase:
 

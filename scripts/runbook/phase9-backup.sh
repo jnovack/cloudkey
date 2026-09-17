@@ -47,6 +47,7 @@ PATHS=(
   /etc/profile.d/zz-cloudkey-dashboard.sh          # interactive-login dashboard loader
   /etc/cloudkey.env                                # Phase 1 Step 3 LCD-app config
   /etc/sudoers.d/cloudkey                          # Phase 1 passwordless-sudo drop-in
+  /etc/systemd/journald.conf.d                     # Phase 1 persistent-journal drop-in
   /etc/ssh/sshd_config.d/10-security.conf          # Phase 1 SSH policy (safe/emergency)
   /etc/apt/keyrings/tailscale-archive-keyring.gpg  # Phase 5 client apt key
   /etc/apt/sources.list.d/tailscale.list           # Phase 5 client apt repo

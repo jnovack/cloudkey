@@ -647,6 +647,15 @@ This part runs **on the client device itself** (e.g. the Cloud Key from
 ### 1. Install the Tailscale client
 
 ```bash
+# Cap tailscaled's journal rate before it first starts (why: below).
+install -d -m 755 /etc/systemd/system/tailscaled.service.d
+cat > /etc/systemd/system/tailscaled.service.d/log-rate-limit.conf <<'EOF'
+[Service]
+LogRateLimitIntervalSec=5min
+LogRateLimitBurst=100
+EOF
+systemctl daemon-reload
+
 DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://pkgs.tailscale.com/stable/debian/bullseye.noarmor.gpg \
@@ -665,6 +674,30 @@ Substitute your own distro's codename in both URLs if the client isn't
 Debian bullseye. `apt-get install` enables and starts `tailscaled`
 automatically — no `tailscale up` yet, that's a separate, explicit step
 next.
+
+The rate limit is there because `tailscaled` is the one daemon on this
+box that can log itself into a loop: when it can't reach the
+coordination server (an expired certificate in front of Headscale is
+enough), it logs every retry, at around 150 lines a minute. That fills
+Phase 1's journal cap in hours and pushes out the previous boot's logs,
+which are exactly the ones you need when the box has died.
+
+`LogRateLimitBurst=100` looks low, but it isn't the real number. journald
+multiplies the burst limit based on how much journal space is free:
+about ×3 with most of Phase 1's 500M cap free (confirmed on a Cloud Key
+with a throwaway unit set to a burst of 5, which kept 16 lines), falling
+toward ×1 as the journal fills. So the effective limit is about 300 lines
+per 5 minutes, roughly 60 a minute. That's comfortably above a healthy
+`tailscaled`, which logs a couple of hundred lines at startup and then a
+few a minute, and well below the retry loop. Setting 300 here would
+actually allow about 900 per 5 minutes, which wouldn't stop the loop at
+all. After the window ends, journald logs a "Suppressed N messages" line
+the next time the unit writes, so anything it dropped still leaves a
+trace. On a box
+where `tailscaled` is already running, the limit only applies once
+`tailscaled` restarts. Restarting it drops any SSH session that's
+running over the tailnet, so run the restart from another path or
+schedule it: `systemd-run --on-active=5s systemctl restart tailscaled`.
 
 **Packaged version**: this step is
 [`scripts/runbook/phase5-01-tailscale-client.sh`](https://github.com/jnovack/cloudkey/blob/main/scripts/runbook/phase5-01-tailscale-client.sh).
@@ -744,6 +777,7 @@ should still show the device enrolled.
 | --- | --- |
 | `/etc/apt/keyrings/tailscale-archive-keyring.gpg` | apt signing key |
 | `/etc/apt/sources.list.d/tailscale.list` | Tailscale's apt repo |
+| `/etc/systemd/system/tailscaled.service.d/log-rate-limit.conf` | caps `tailscaled` at a burst of 100 per 5 minutes (about 300 after journald's free-space scaling) so a retry loop can't push the previous boot out of the journal |
 | `/var/lib/tailscale/` | client state (keys, tailnet membership) |
 
 ## What's not covered yet

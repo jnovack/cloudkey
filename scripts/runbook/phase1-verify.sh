@@ -20,6 +20,18 @@ echo "is worth investigating before calling this done.)"
 systemctl --failed
 echo
 
+echo "=== persistent journal (the pre-reboot boot must still be on disk) ==="
+# One boot listed after a reboot means the journal is volatile, and the
+# next unclean death leaves nothing behind to diagnose.
+boots="$(journalctl --list-boots --no-pager 2>/dev/null | wc -l)"
+if (( boots >= 2 )); then
+  echo "OK: $boots boots on disk"
+else
+  echo "WARN: only $boots boot on disk -- journal is not persistent;"
+  echo "      run phase1-persistent-journal.sh (Before you start, item 5)"
+fi
+echo
+
 echo "=== residual UniFi packages (only the deliberately-kept ones should remain) ==="
 dpkg -l | grep -iE 'unifi|ubnt|uos-|ucs-|uid-agent|ulp-go' || echo "(none found)"
 echo
