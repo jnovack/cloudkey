@@ -6,7 +6,8 @@ repo-specific rules yet; add them above the templates block as needed.
 
 <!-- templates: lang-golang -->
 
-<!-- BEGIN TEMPLATES v:1 hash:0237d3aaf765 -->
+<!-- BEGIN TEMPLATES v:1 hash:0b1a93b5bfc4 -->
+
 ## go
 
 ### Formatting
@@ -116,10 +117,15 @@ these files — use the script to ensure exact repeatability.
 **Build version rules** (enforced in every binary regardless of scaffolding):
 
 - Expose `version`, `buildRFC3339`, `revision` as ldflags (`-X main.version=...`).
-- Call `populateBuildMetadataFromBuildInfo()` as the first line of `main()` to
-  populate from `debug.ReadBuildInfo()` when ldflags are absent.
+- Populate them from `debug.ReadBuildInfo()` at the top of `main()` when ldflags
+  are absent — either via a shared `internal/buildversion` package (preferred
+  once a project has more than one binary) or an inlined helper. Whichever the
+  project already uses, keep every binary on the same one.
 - Always include a `--version` flag that logs all three values and exits 0.
-- Log all three values at startup via `slog.Info`.
+- Log all three values at startup, using whichever logger the project has
+  standardised on — `slog.Info` for slog projects, `log.Info()` for zerolog
+  ones. Do not introduce a second logging library for the banner alone; see the
+  Logging section below for which to choose.
 
 ### Cross-platform
 
@@ -322,4 +328,5 @@ Do not write functional, smoke, or e2e tests unless explicitly asked.
   database or service behavior.
 - Do not mock external systems when a small, reliable container-backed test
   would better prove correctness.
+
 <!-- END TEMPLATES -->
